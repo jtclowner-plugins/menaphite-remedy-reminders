@@ -93,7 +93,11 @@ public class PreservePlanTest
 						{
 							worst = Math.min(worst, referenceDecay(age, delay, activation + reaction));
 						}
-						if (worst > best) { best = worst; earliest = activation; }
+						if (worst > best || (!regular && earliest >= 0 && worst == best))
+						{
+							best = worst;
+							earliest = activation;
+						}
 					}
 					PreservePlan plan = PreservePlan.align(cycle, age, age + delay, regular);
 					if (earliest < 0) { assertNull(plan); }
@@ -107,6 +111,23 @@ public class PreservePlanTest
 				}
 			}
 		}
+	}
+
+	@Test
+	public void mixedBoostsChooseEarliestOptimalButTimedOnlyChoosesLatest()
+	{
+		CombatDecayCycle cycle = new CombatDecayCycle();
+		cycle.observe(0);
+		cycle.advance(33, false);
+		int target = 298;
+		PreservePlan mixed = PreservePlan.align(cycle, 33, target, true);
+		PreservePlan timedOnly = PreservePlan.align(cycle, 33, target, false);
+		assertNotNull(mixed);
+		assertNotNull(timedOnly);
+		assertEquals(mixed.remaining, timedOnly.remaining);
+		assertTrue(mixed.enable < timedOnly.enable);
+		assertEquals(43, mixed.enable - 33);
+		assertEquals(125, timedOnly.enable - 33);
 	}
 
 	// With one activation left on, each full cycle is either 60 or 90 seconds.

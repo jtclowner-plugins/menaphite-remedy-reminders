@@ -42,7 +42,7 @@ final class PreservePlan
 			{
 				worst = Math.min(worst, outcomes[enable + reaction]);
 			}
-			if (worst > best)
+			if (worst > best || (!regularBoost && plan != null && worst == best))
 			{
 				best = worst;
 				plan = new PreservePlan(target, now + enable, best);

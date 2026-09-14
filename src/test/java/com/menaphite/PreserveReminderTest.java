@@ -174,7 +174,7 @@ public class PreserveReminderTest
 		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
 		CombatDecayCycle cycle = new CombatDecayCycle();
 		cycle.observe(0);
-		PreservePlan plan = PreservePlan.align(cycle, 0, 483);
+		PreservePlan plan = PreservePlan.align(cycle, 0, 483, true);
 		assertNotNull(plan);
 		assertTrue(plan.enable < 333); // Can act before the final 90 seconds.
 		for (int tick = 0; tick <= plan.enable; tick++)
