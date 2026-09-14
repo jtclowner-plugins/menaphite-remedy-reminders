@@ -31,6 +31,7 @@ public class ReminderTest
 		assertEquals("Sip Menaphite remedy!", config.overheadMessage());
 		assertEquals(Color.BLUE, config.overheadColour());
 		assertTrue(config.heartOnlyWhenBanked());
+		assertTrue(config.promptPreserve());
 		for (Effect effect : Effect.values())
 		{
 			assertEquals(effect != Effect.SATURATED_HEART, effect.enabled(config));
@@ -196,6 +197,7 @@ public class ReminderTest
 		MenaphiteRemedyRemindersPlugin plugin = new MenaphiteRemedyRemindersPlugin();
 		Object[][] dependencies = {{"client", client}, {"notifier", notifier}, {"config", config},
 			{"clientThread", mock(ClientThread.class)}, {"overhead", overhead},
+			{"preserveReminder", mock(PreserveReminder.class)},
 			{"overlayManager", mock(OverlayManager.class)}, {"infoBoxManager", mock(InfoBoxManager.class)}};
 		for (Object[] dependency : dependencies)
 		{

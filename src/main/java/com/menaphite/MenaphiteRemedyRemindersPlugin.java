@@ -10,6 +10,7 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.InventoryID;
@@ -40,6 +41,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 	@Inject private InfoBoxManager infoBoxManager;
 	@Inject private ReminderOverhead overhead;
 	@Inject private OverlayManager overlayManager;
+	@Inject private PreserveReminder preserveReminder;
 
 	private final ReminderTimers timers = new ReminderTimers();
 	private final Map<Effect, ReminderInfoBox> infoBoxes = new EnumMap<>(Effect.class);
@@ -60,7 +62,11 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		needsSync = true;
 		clientThread.invokeLater(() ->
 		{
-			if (running && client.getGameState() == GameState.LOGGED_IN) { synchronizeTimers(); }
+			if (running && client.getGameState() == GameState.LOGGED_IN)
+			{
+				preserveReminder.initialize();
+				synchronizeTimers();
+			}
 		});
 	}
 
@@ -68,6 +74,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 	protected void shutDown()
 	{
 		running = false;
+		preserveReminder.reset();
 		overlayManager.remove(overhead);
 		overhead.clear();
 		clearInfoBoxes();
@@ -88,6 +95,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 	{
 		if (!running || client.getGameState() != GameState.LOGGED_IN) { return; }
 		int id = event.getVarbitId();
+		preserveReminder.onVarbitChanged(id);
 		if (Effect.forVarbit(id) != null || id == VarbitID.STATRENEWAL_POTION_TIMER
 			|| id == VarbitID.MOONLIGHT_POTION_TIME)
 		{
@@ -114,15 +122,43 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		if (needsSync) { synchronizeTimers(); }
 		timers.tick();
 		updateReminders(true);
+		preserveReminder.tick(this, nextReminderTarget());
+	}
+
+	@Subscribe
+	public void onStatChanged(StatChanged event)
+	{
+		if (running && client.getGameState() == GameState.LOGGED_IN) { preserveReminder.onStatChanged(event); }
+	}
+
+	private int nextReminderTarget()
+	{
+		int target = Integer.MAX_VALUE;
+		if (!hasRemedy()) { return target; }
+		int threshold = ReminderTimers.reminderTicks(config.remindSeconds());
+		for (Effect effect : Effect.values())
+		{
+			if (effect.enabled(config) && timers.applicable(effect)
+				&& (effect != Effect.SATURATED_HEART || canRemindForHeart()))
+			{
+				target = Math.min(target, client.getTickCount() + timers.remaining(effect) - threshold);
+			}
+		}
+		return target;
+	}
+
+	private boolean hasRemedy()
+	{
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		return inventory != null && (inventory.contains(ItemID._1DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._2DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._3DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._4DOSESTATRENEWAL));
 	}
 
 	private void updateReminders(boolean mayNotify)
 	{
-		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		if (inventory == null || !(inventory.contains(ItemID._1DOSESTATRENEWAL)
-			|| inventory.contains(ItemID._2DOSESTATRENEWAL)
-			|| inventory.contains(ItemID._3DOSESTATRENEWAL)
-			|| inventory.contains(ItemID._4DOSESTATRENEWAL)))
+		if (!hasRemedy())
 		{
 			clearOutputs();
 			return;
@@ -177,7 +213,11 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		{
 			clientThread.invokeLater(() ->
 			{
-				if (running && client.getGameState() == GameState.LOGGED_IN) { updateReminders(false); }
+				if (running && client.getGameState() == GameState.LOGGED_IN)
+				{
+					updateReminders(false);
+					preserveReminder.tick(this, nextReminderTarget());
+				}
 			});
 		}
 	}
@@ -193,6 +233,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 				break;
 			case HOPPING:
 			case CONNECTION_LOST:
+				preserveReminder.reset();
 				clearOutputs();
 				needsSync = true;
 				break;
@@ -232,6 +273,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 
 	private void reset()
 	{
+		preserveReminder.reset();
 		clearOutputs();
 		timers.clear();
 		needsSync = true;

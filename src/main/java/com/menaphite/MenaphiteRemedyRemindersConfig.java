@@ -83,4 +83,9 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 		description = "Only display Menaphite reminders for the saturated heart when the boost is close to expiring but the heart is no longer in the inventory (e.g. wilderness use cases)",
 		section = MISC, position = 0)
 	default boolean heartOnlyWhenBanked() { return true; }
+
+	@ConfigItem(keyName = "promptPreserve", name = "Prompt use of Preserve to optimise Menaphite usage",
+		description = "Shows an infobox to show when, and for how long, to apply the preserve prayer such that the natural stat decay coincides with the menaphite reminder, in order to maximise boost length",
+		section = MISC, position = 1)
+	default boolean promptPreserve() { return true; }
 }
