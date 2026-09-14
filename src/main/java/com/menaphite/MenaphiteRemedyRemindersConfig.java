@@ -75,4 +75,12 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 	@ConfigItem(keyName = "divineBattlemage", name = "Divine battlemage",
 		description = "Remind before divine battlemage expires", section = EFFECTS, position = 7)
 	default boolean divineBattlemage() { return true; }
+
+	@ConfigSection(name = "Misc", description = "Additional reminder conditions", position = 7)
+	String MISC = "misc";
+
+	@ConfigItem(keyName = "heartOnlyWhenBanked", name = "Remind for heart only when banked",
+		description = "Only display Menaphite reminders for the saturated heart when the boost is close to expiring but the heart is no longer in the inventory (e.g. wilderness use cases)",
+		section = MISC, position = 0)
+	default boolean heartOnlyWhenBanked() { return true; }
 }

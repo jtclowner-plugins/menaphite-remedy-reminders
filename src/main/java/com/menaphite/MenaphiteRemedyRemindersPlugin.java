@@ -6,11 +6,13 @@ import java.util.Map;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
@@ -120,7 +122,8 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		boolean anyVisibleReminder = false;
 		for (Effect effect : Effect.values())
 		{
-			boolean applicable = effect.enabled(config) && timers.applicable(effect);
+			boolean applicable = effect.enabled(config) && timers.applicable(effect)
+				&& (effect != Effect.SATURATED_HEART || canRemindForHeart());
 			if (mayNotify && applicable && timers.remind(effect, threshold))
 			{
 				if (config.sendNotification())
@@ -147,6 +150,15 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 			else { removeInfoBox(effect); }
 		}
 		if (!config.showOverhead() || !anyVisibleReminder) { overhead.clear(); }
+	}
+
+	private boolean canRemindForHeart()
+	{
+		if (!config.heartOnlyWhenBanked()) { return true; }
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		// An unavailable inventory is not evidence that the heart has been banked.
+		return inventory != null && !inventory.contains(ItemID.SATURATED_HEART)
+			&& !inventory.contains(ItemID.Cert.SATURATED_HEART);
 	}
 
 	@Subscribe

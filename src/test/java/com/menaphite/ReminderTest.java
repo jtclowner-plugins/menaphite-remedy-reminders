@@ -5,9 +5,12 @@ import java.awt.Graphics2D;
 import java.lang.reflect.Field;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
@@ -27,6 +30,7 @@ public class ReminderTest
 		assertEquals(17, ReminderTimers.reminderTicks(config.remindSeconds()));
 		assertEquals("Sip Menaphite remedy!", config.overheadMessage());
 		assertEquals(Color.BLUE, config.overheadColour());
+		assertTrue(config.heartOnlyWhenBanked());
 		for (Effect effect : Effect.values())
 		{
 			assertEquals(effect != Effect.SATURATED_HEART, effect.enabled(config));
@@ -102,22 +106,13 @@ public class ReminderTest
 	@Test
 	public void standardNotifierReceivesReminderText() throws Exception
 	{
-		MenaphiteRemedyRemindersPlugin plugin = new MenaphiteRemedyRemindersPlugin();
 		Client client = mock(Client.class);
 		Notifier notifier = mock(Notifier.class);
 		MenaphiteRemedyRemindersConfig config = new MenaphiteRemedyRemindersConfig()
 		{
 			public boolean showInfobox() { return false; }
 		};
-		Object[][] dependencies = {{"client", client}, {"notifier", notifier}, {"config", config},
-			{"clientThread", mock(ClientThread.class)}, {"overhead", new ReminderOverhead(client, config)},
-			{"overlayManager", mock(OverlayManager.class)}, {"infoBoxManager", mock(InfoBoxManager.class)}};
-		for (Object[] dependency : dependencies)
-		{
-			Field field = plugin.getClass().getDeclaredField((String) dependency[0]);
-			field.setAccessible(true);
-			field.set(plugin, dependency[1]);
-		}
+		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, new ReminderOverhead(client, config));
 		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
 		when(client.getVarbitValue(Effect.DIVINE_RANGING.varbit)).thenReturn(16);
 		plugin.startUp();
@@ -126,5 +121,66 @@ public class ReminderTest
 		verify(notifier).notify("Sip Menaphite remedy! Divine ranging expires in 10s");
 		verifyNoMoreInteractions(notifier);
 		plugin.shutDown();
+	}
+
+	@Test
+	public void heartInventoryConditionDefersReminderAndCanBeDisabled() throws Exception
+	{
+		Client client = mock(Client.class);
+		Notifier notifier = mock(Notifier.class);
+		ReminderOverhead overhead = mock(ReminderOverhead.class);
+		ItemContainer inventory = mock(ItemContainer.class);
+		MenaphiteRemedyRemindersConfig config = spy(new MenaphiteRemedyRemindersConfig()
+		{
+			public boolean saturatedHeart() { return true; }
+			public boolean showInfobox() { return false; }
+		});
+		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, overhead);
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(client.getVarbitValue(Effect.SATURATED_HEART.varbit)).thenReturn(16);
+		plugin.startUp();
+		plugin.onGameTick(new GameTick()); // Inventory unavailable.
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(true);
+		plugin.onGameTick(new GameTick());
+		verifyNoInteractions(notifier);
+		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(false);
+		when(inventory.contains(ItemID.Cert.SATURATED_HEART)).thenReturn(true);
+		plugin.onGameTick(new GameTick());
+		verifyNoInteractions(notifier);
+		when(inventory.contains(ItemID.Cert.SATURATED_HEART)).thenReturn(false);
+		plugin.onGameTick(new GameTick()); // Banked during the reminder window.
+		verify(notifier, times(1)).notify(contains("Saturated heart"));
+		verify(overhead).show();
+		clearInvocations(overhead);
+		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(true);
+		plugin.onGameTick(new GameTick());
+		verify(overhead).clear();
+		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(false);
+		plugin.onGameTick(new GameTick());
+		verify(notifier, times(1)).notify(anyString());
+		plugin.shutDown();
+		doReturn(false).when(config).heartOnlyWhenBanked();
+		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(true);
+		plugin.startUp();
+		plugin.onGameTick(new GameTick());
+		verify(notifier, times(2)).notify(contains("Saturated heart"));
+		plugin.shutDown();
+	}
+
+	private MenaphiteRemedyRemindersPlugin createPlugin(Client client, Notifier notifier,
+		MenaphiteRemedyRemindersConfig config, ReminderOverhead overhead) throws Exception
+	{
+		MenaphiteRemedyRemindersPlugin plugin = new MenaphiteRemedyRemindersPlugin();
+		Object[][] dependencies = {{"client", client}, {"notifier", notifier}, {"config", config},
+			{"clientThread", mock(ClientThread.class)}, {"overhead", overhead},
+			{"overlayManager", mock(OverlayManager.class)}, {"infoBoxManager", mock(InfoBoxManager.class)}};
+		for (Object[] dependency : dependencies)
+		{
+			Field field = plugin.getClass().getDeclaredField((String) dependency[0]);
+			field.setAccessible(true);
+			field.set(plugin, dependency[1]);
+		}
+		return plugin;
 	}
 }
