@@ -76,7 +76,7 @@ public class PreserveReminderTest
 		}
 		verify(boxes).addInfoBox(capture.capture());
 		verify(boxes, never()).removeInfoBox(any());
-		assertEquals("TURN ON", capture.getValue().getText());
+		assertEquals("", capture.getValue().getText()); // Two-line instruction is drawn onto the sprite.
 		assertFalse(capture.getValue().getTooltip().contains("leave it on"));
 		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
 		for (int tick = plan.enable + 15; tick <= 150; tick++)

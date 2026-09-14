@@ -21,7 +21,7 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 	@ConfigItem(keyName = "menaphiteEnabled", name = "Enable Menaphite reminders", description = "Enable all Menaphite drink reminders and their Preserve preemption targets", section = MENAPHITE, position = 0)
 	default boolean menaphiteEnabled() { return true; }
 
-	@ConfigItem(keyName = "preserveEnabled", name = "Enable Preserve reminders", description = "Enable all Preserve prayer reminders", section = PRESERVE, position = 0)
+	@ConfigItem(keyName = "preserveEnabled", name = "Enable Preserve reminders", description = "Enable Preserve prompts when the prayer is unlocked, you have level 55 Prayer and Prayer points remaining", section = PRESERVE, position = 0)
 	default boolean preserveEnabled() { return true; }
 	@Range(min = 1, max = 300)
 	@ConfigItem(keyName = "remindSeconds", name = "Remind before expiry",
@@ -49,7 +49,7 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 
 	@ConfigItem(keyName = "overheadColour", name = "Overhead colour",
 		description = "Colour of the overhead reminder", section = MENAPHITE, position = 6)
-	default Color overheadColour() { return Color.BLUE; }
+	default Color overheadColour() { return new Color(80, 180, 255); }
 
 
 	@ConfigItem(keyName = "saturatedHeart", name = "Saturated heart",
@@ -109,11 +109,11 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 	default String preserveMessage() { return "Enable Preserve!"; }
 
 	@ConfigItem(keyName = "preserveColour", name = "Overhead colour", description = "Colour of the Preserve overhead reminder", section = PRESERVE, position = 5)
-	default Color preserveColour() { return Color.BLUE; }
+	default Color preserveColour() { return new Color(180, 100, 255); }
 
-	@ConfigItem(keyName = "preserveCombat", name = "Prompt to preserve combat stats", description = "Enables Preserve prayer prompts if the prayer is unlocked and a regularly-decaying combat boost is detected", section = PRESERVE, position = 7)
+	@ConfigItem(keyName = "preserveCombat", name = "Prompt to preserve combat stats", description = "Prompt when a regularly-decaying combat boost is detected", section = PRESERVE, position = 7)
 	default boolean preserveCombat() { return true; }
 
-	@ConfigItem(keyName = "preserveNonCombat", name = "Prompt to preserve non-combat stats", description = "Enables Preserve prayer prompts if the prayer is unlocked and a regularly-decaying non-combat boost is detected", section = PRESERVE, position = 8)
+	@ConfigItem(keyName = "preserveNonCombat", name = "Prompt to preserve non-combat stats", description = "Prompt when a regularly-decaying non-combat boost is detected", section = PRESERVE, position = 8)
 	default boolean preserveNonCombat() { return false; }
 }

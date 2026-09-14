@@ -154,7 +154,7 @@ final class PreserveReminder
 			box = new PreserveInfoBox(image, plugin);
 			added = true;
 		}
-		box.update(plan);
+		box.update(plan, plan == null ? 0 : PreservePlan.afterSip(cycle, plan.target - now, 0));
 		if (restored) { box.setTooltip(box.getTooltip() + "<br>Cycle estimated from the saved logout segment."); }
 		if (added) { infoBoxManager.addInfoBox(box); }
 	}

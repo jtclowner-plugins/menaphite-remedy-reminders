@@ -29,7 +29,8 @@ public class ReminderTest
 		MenaphiteRemedyRemindersConfig config = new MenaphiteRemedyRemindersConfig() {};
 		assertEquals(17, ReminderTimers.reminderTicks(config.remindSeconds()));
 		assertEquals("Sip Menaphite remedy!", config.overheadMessage());
-		assertEquals(Color.BLUE, config.overheadColour());
+		assertEquals(new Color(80, 180, 255), config.overheadColour());
+		assertEquals(new Color(180, 100, 255), config.preserveColour());
 		assertTrue(config.heartOnlyWhenBanked());
 		assertTrue(config.promptPreserve());
 		assertTrue(config.menaphiteEnabled());
