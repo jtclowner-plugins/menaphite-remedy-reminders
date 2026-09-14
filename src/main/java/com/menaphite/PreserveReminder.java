@@ -11,6 +11,8 @@ import net.runelite.api.gameval.SpriteID;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.game.SpriteManager;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.Notifier;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 
@@ -20,22 +22,38 @@ final class PreserveReminder
 	@Inject private MenaphiteRemedyRemindersConfig config;
 	@Inject private SpriteManager spriteManager;
 	@Inject private InfoBoxManager infoBoxManager;
+	@Inject private ConfigManager configManager;
+	@Inject private Notifier notifier;
+	@Inject private ReminderOverhead overhead;
+	private static final String SAVED_SEGMENT = "combatDecaySegment";
 
 	private final CombatDecayCycle cycle = new CombatDecayCycle();
 	private final Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
 	private PreservePlan plan;
 	private PreserveInfoBox box;
-	private int lastRemedy;
-	private boolean remedyConsumed;
-	private boolean followingSip;
+	private boolean tracking;
+	private boolean restored;
+	private boolean notified;
+	private boolean overheadShown;
 
-	void initialize()
+
+	void initialize(boolean login)
 	{
+		if (!tracking)
+		{
+			Integer segment = configManager.getRSProfileConfiguration(MenaphiteRemedyRemindersConfig.GROUP, SAVED_SEGMENT, int.class);
+			configManager.unsetRSProfileConfiguration(MenaphiteRemedyRemindersConfig.GROUP, SAVED_SEGMENT);
+			if (login && !cycle.known() && segment != null && !client.isPrayerActive(Prayer.PRESERVE))
+			{
+				cycle.restore(segment, client.getTickCount());
+				restored = cycle.known();
+			}
+			tracking = true;
+		}
 		for (Skill skill : new Skill[]{Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE, Skill.RANGED, Skill.MAGIC})
 		{
 			levels.put(skill, client.getBoostedSkillLevel(skill));
 		}
-		lastRemedy = client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER);
 	}
 
 	void onStatChanged(StatChanged event)
@@ -50,11 +68,19 @@ final class PreserveReminder
 			int now = client.getTickCount();
 			cycle.advance(now, client.isPrayerActive(Prayer.PRESERVE));
 			cycle.observe(now);
+			restored = false;
 		}
 	}
 
 	private boolean divineProtected(Skill skill)
 	{
+		if (client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER) > 0) { return false; }
+		boolean melee = skill == Skill.ATTACK || skill == Skill.STRENGTH || skill == Skill.DEFENCE;
+		if (melee && client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME) > 0) { return true; }
+		if ((skill == Skill.DEFENCE || skill == Skill.RANGED)
+			&& client.getVarbitValue(VarbitID.DIVINEBASTION_POTION_TIME) > 0) { return true; }
+		if ((skill == Skill.DEFENCE || skill == Skill.MAGIC)
+			&& client.getVarbitValue(VarbitID.DIVINEBATTLEMAGE_POTION_TIME) > 0) { return true; }
 		int varbit;
 		switch (skill)
 		{
@@ -77,12 +103,6 @@ final class PreserveReminder
 		{
 			cycle.preserveTicks = 0;
 		}
-		if (id == VarbitID.STATRENEWAL_POTION_TIMER)
-		{
-			int value = client.getVarbitValue(id);
-			remedyConsumed |= value > lastRemedy && value > 0;
-			lastRemedy = value;
-		}
 	}
 
 	void tick(Plugin plugin, int target)
@@ -90,59 +110,80 @@ final class PreserveReminder
 		int now = client.getTickCount();
 		boolean active = client.isPrayerActive(Prayer.PRESERVE);
 		cycle.advance(now, active);
-		boolean sip = remedyConsumed;
-		remedyConsumed = false;
-		if (!config.promptPreserve() || !cycle.known() || client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 0
+		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
+		boolean regular = hasRegularBoost();
+		boolean preempt = config.promptPreserve() && target != Integer.MAX_VALUE && target > now;
+		if (!config.preserveEnabled() || (!regular && !preempt) || active
+			|| client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 0
 			|| client.getRealSkillLevel(Skill.PRAYER) < 55 || client.getBoostedSkillLevel(Skill.PRAYER) <= 0)
 		{
 			cancel();
 			return;
 		}
-		if (sip && plan != null)
+		if (preempt)
 		{
-			// Drinking ends alignment: only extend the current cycle, never force a decay afterwards.
-			plan = PreservePlan.finish(cycle, now);
-			followingSip = true;
-		}
-		if (followingSip)
-		{
-			if (plan == null || now >= plan.end) { cancel(); return; }
-			if (!plan.matches(cycle, now)) { plan = PreservePlan.finish(cycle, now); }
-		}
-		else
-		{
-			if (target == Integer.MAX_VALUE) { cancel(); return; }
-			if (plan != null && (Math.abs(plan.target - target) > 1 || !plan.matches(cycle, now)))
+			// A regular boost permits early activation, but never bypass the sip timing.
+			if (!cycle.known() || (!regular && (long) target - now + lead > 150))
 			{
-				plan = null;
+				cancel();
+				return;
 			}
-			if (plan == null)
+			if (plan != null && !plan.matches(cycle, now, target)) { plan = null; }
+			if (plan == null) { plan = PreservePlan.align(cycle, now, target, regular); }
+			if (plan == null || now < plan.enable)
 			{
-				int delay = Math.max(0, target - now);
-				// A loss of at most ten seconds from a full preserved interval needs no correction.
-				if (PreservePlan.predictedAfterSip(cycle, delay, active) < 134)
-				{
-					plan = target > now ? PreservePlan.align(cycle, now, target) : PreservePlan.finish(cycle, now);
-				}
+				clearOutputs();
+				return;
 			}
 		}
-		if (plan == null || now >= plan.end) { removeBox(); return; }
+		else { plan = null; }
+		if (config.preserveNotification() && !notified)
+		{
+			notifier.notify("Enable Preserve and leave it on to extend your boosted stats.");
+			notified = true;
+		}
+		if (config.preserveOverhead() && !overheadShown) { overhead.showPreserve(); overheadShown = true; }
+		if (!config.preserveOverhead()) { overhead.clearPreserve(); overheadShown = false; }
+		if (!config.preserveInfobox()) { removeBox(); return; }
+		boolean added = false;
 		if (box == null)
 		{
 			BufferedImage image = spriteManager.getSprite(SpriteID.Prayeron.PRESERVE, 0);
 			if (image == null) { return; }
 			box = new PreserveInfoBox(image, plugin);
-			box.update(plan, now, active, followingSip);
-			infoBoxManager.addInfoBox(box);
+			added = true;
 		}
-		box.update(plan, now, active, followingSip);
+		box.update(plan);
+		if (restored) { box.setTooltip(box.getTooltip() + "<br>Cycle estimated from the saved logout segment."); }
+		if (added) { infoBoxManager.addInfoBox(box); }
 	}
 
 	void cancel()
 	{
 		plan = null;
-		followingSip = false;
+		clearOutputs();
+	}
+
+	private void clearOutputs()
+	{
+		notified = false;
+		overheadShown = false;
+		overhead.clearPreserve();
 		removeBox();
+	}
+
+	private boolean hasRegularBoost()
+	{
+		for (Skill skill : Skill.values())
+		{
+			if (skill == Skill.OVERALL || skill == Skill.HITPOINTS || skill == Skill.PRAYER) { continue; }
+			boolean combat = skill == Skill.ATTACK || skill == Skill.STRENGTH || skill == Skill.DEFENCE
+				|| skill == Skill.RANGED || skill == Skill.MAGIC;
+			if ((combat ? config.preserveCombat() : config.preserveNonCombat())
+				&& client.getBoostedSkillLevel(skill) > client.getRealSkillLevel(skill)
+				&& (!combat || !divineProtected(skill))) { return true; }
+		}
+		return false;
 	}
 
 	private void removeBox()
@@ -152,10 +193,24 @@ final class PreserveReminder
 
 	void reset()
 	{
+		if (tracking) { configManager.unsetRSProfileConfiguration(MenaphiteRemedyRemindersConfig.GROUP, SAVED_SEGMENT); }
 		cancel();
 		cycle.reset();
 		levels.clear();
-		lastRemedy = 0;
-		remedyConsumed = false;
+		tracking = false;
+		restored = false;
+	}
+
+	void logout()
+	{
+		if (!tracking) { return; }
+		int segment = client.isPrayerActive(Prayer.PRESERVE) ? -1 : cycle.logoutSegment();
+		reset();
+		if (segment >= 0)
+		{
+			// Normal cycles restart their current 12-second segment on login.
+			// Preserve-affected cycles are deliberately not extrapolated across logout.
+			configManager.setRSProfileConfiguration(MenaphiteRemedyRemindersConfig.GROUP, SAVED_SEGMENT, segment);
+		}
 	}
 }

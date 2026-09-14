@@ -7,28 +7,23 @@ import net.runelite.client.ui.overlay.infobox.InfoBox;
 
 final class PreserveInfoBox extends InfoBox
 {
-	private String text;
-	private Color color;
-
 	PreserveInfoBox(BufferedImage image, Plugin plugin)
 	{
 		super(image, plugin);
 	}
 
-	void update(PreservePlan plan, int now, boolean active, boolean consumed)
+	void update(PreservePlan plan)
 	{
-		boolean shouldBeOn = plan.on(now);
-		int seconds = ReminderTimers.secondsRemaining(Math.max(0, plan.nextChange(now) - now));
-		text = shouldBeOn != active ? (shouldBeOn ? "ON" : "OFF") : seconds + "s";
-		color = shouldBeOn != active ? Color.RED : shouldBeOn ? Color.GREEN : Color.CYAN;
-		String instruction = shouldBeOn ? (active ? "Keep Preserve on" : "Enable Preserve now")
-			: (active ? "Disable Preserve now" : "Leave Preserve off");
-		boolean fromNow = consumed || now >= plan.target;
-		setTooltip(instruction + "<br>" + (shouldBeOn ? "Keep on for " : "Enable in ") + seconds + "s"
-			+ "<br>" + (fromNow ? "Estimated next decay: " : "Estimated first decay after reminder: ")
-			+ ReminderTimers.secondsRemaining(Math.max(0, plan.decay - (fromNow ? now : plan.target))) + "s");
+		if (plan == null)
+		{
+			setTooltip("Turn on Preserve to extend your boosted stats.");
+			return;
+		}
+		setTooltip("Turn on Preserve."
+			+ "<br>Estimated first decay after the Menaphite reminder: at least "
+			+ (plan.remaining * 6 / 10) + "s if enabled within the prompt window.");
 	}
 
-	@Override public String getText() { return text; }
-	@Override public Color getTextColor() { return color; }
+	@Override public String getText() { return "TURN ON"; }
+	@Override public Color getTextColor() { return Color.RED; }
 }

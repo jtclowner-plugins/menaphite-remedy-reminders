@@ -32,6 +32,12 @@ public class ReminderTest
 		assertEquals(Color.BLUE, config.overheadColour());
 		assertTrue(config.heartOnlyWhenBanked());
 		assertTrue(config.promptPreserve());
+		assertTrue(config.menaphiteEnabled());
+		assertTrue(config.preserveEnabled());
+		assertFalse(config.sendNotification());
+		assertFalse(config.preserveNotification());
+		assertTrue(config.preserveCombat());
+		assertFalse(config.preserveNonCombat());
 		for (Effect effect : Effect.values())
 		{
 			assertEquals(effect != Effect.SATURATED_HEART, effect.enabled(config));
@@ -102,6 +108,16 @@ public class ReminderTest
 		overhead.clear();
 		overhead.render(graphics);
 		verifyNoInteractions(graphics);
+		when(player.getCanvasTextLocation(eq(graphics), eq("Enable Preserve!"), anyInt())).thenReturn(new Point(10, 20));
+		overhead.showPreserve();
+		overhead.clear(); // Clearing sip output must not clear Preserve output.
+		overhead.render(graphics);
+		verify(graphics).drawString("Enable Preserve!", 10, 20);
+		clearInvocations(graphics);
+		overhead.clearPreserve();
+		overhead.show();
+		overhead.render(graphics);
+		verify(graphics).drawString("Custom reminder", 10, 20);
 	}
 
 	@Test
@@ -114,6 +130,7 @@ public class ReminderTest
 		MenaphiteRemedyRemindersConfig config = new MenaphiteRemedyRemindersConfig()
 		{
 			public boolean showInfobox() { return false; }
+			public boolean sendNotification() { return true; }
 		};
 		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, overhead);
 		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
@@ -155,6 +172,7 @@ public class ReminderTest
 		MenaphiteRemedyRemindersConfig config = spy(new MenaphiteRemedyRemindersConfig()
 		{
 			public boolean saturatedHeart() { return true; }
+			public boolean sendNotification() { return true; }
 			public boolean showInfobox() { return false; }
 		});
 		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, overhead);
@@ -188,6 +206,51 @@ public class ReminderTest
 		plugin.startUp();
 		plugin.onGameTick(new GameTick());
 		verify(notifier, times(2)).notify(contains("Saturated heart"));
+		plugin.shutDown();
+		clearInvocations(notifier);
+		doReturn(false).when(config).menaphiteEnabled();
+		plugin.startUp();
+		plugin.onGameTick(new GameTick());
+		verifyNoInteractions(notifier);
+		plugin.shutDown();
+	}
+
+	@Test
+	public void sipReminderNeverFiresBeforeItsConfiguredTarget()
+	{
+		for (int seconds : new int[]{3, 10, 30})
+		{
+			ReminderTimers timers = new ReminderTimers();
+			timers.updateTimerFromVarbit(Effect.SATURATED_HEART.varbit, 500);
+			int threshold = ReminderTimers.reminderTicks(seconds);
+			for (int elapsed = 0; elapsed <= 500; elapsed++)
+			{
+				timers.tick();
+				assertEquals(elapsed == 500 - threshold, timers.remind(Effect.SATURATED_HEART, threshold));
+			}
+		}
+	}
+
+	@Test
+	public void preservePreemptionRequiresAnEligibleDrinkReminder() throws Exception
+	{
+		Client client = mock(Client.class);
+		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, mock(Notifier.class),
+			new MenaphiteRemedyRemindersConfig() {}, mock(ReminderOverhead.class));
+		Field field = plugin.getClass().getDeclaredField("preserveReminder");
+		field.setAccessible(true);
+		PreserveReminder preserve = (PreserveReminder) field.get(plugin);
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(client.getVarbitValue(Effect.SATURATED_HEART.varbit)).thenReturn(500);
+		plugin.startUp();
+		plugin.onGameTick(new GameTick()); // Heart alerts disabled, inventory unavailable.
+		verify(preserve).tick(plugin, Integer.MAX_VALUE);
+		clearInvocations(preserve);
+		plugin.shutDown();
+		when(client.getVarbitValue(Effect.SATURATED_HEART.varbit)).thenReturn(0);
+		plugin.startUp();
+		plugin.onGameTick(new GameTick());
+		verify(preserve).tick(plugin, Integer.MAX_VALUE);
 		plugin.shutDown();
 	}
 

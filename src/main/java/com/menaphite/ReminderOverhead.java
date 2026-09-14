@@ -4,6 +4,10 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.awt.Color;
+import java.awt.Font;
+import net.runelite.client.ui.FontManager;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
@@ -13,11 +17,13 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 
+@Singleton
 final class ReminderOverhead extends Overlay
 {
 	private final Client client;
 	private final MenaphiteRemedyRemindersConfig config;
 	private volatile long visibleUntil;
+	private volatile long preserveUntil;
 
 	@Inject
 	ReminderOverhead(Client client, MenaphiteRemedyRemindersConfig config)
@@ -30,25 +36,45 @@ final class ReminderOverhead extends Overlay
 
 	void show() { visibleUntil = System.nanoTime() + TimeUnit.SECONDS.toNanos(5); }
 	void clear() { visibleUntil = 0; }
+	void showPreserve() { preserveUntil = System.nanoTime() + TimeUnit.SECONDS.toNanos(5); }
+	void clearPreserve() { preserveUntil = 0; }
 
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (visibleUntil == 0 || System.nanoTime() >= visibleUntil
-			|| !config.showOverhead() || client.getGameState() != GameState.LOGGED_IN)
+		if (client.getGameState() != GameState.LOGGED_IN)
 		{
 			return null;
 		}
 		Player player = client.getLocalPlayer();
-		String message = config.overheadMessage().trim();
-		if (player != null && !message.isEmpty())
+		if (player == null) { return null; }
+		boolean menaphite = System.nanoTime() < visibleUntil && config.menaphiteEnabled() && config.showOverhead();
+		boolean preserve = System.nanoTime() < preserveUntil && config.preserveEnabled() && config.preserveOverhead();
+		if (!menaphite && !preserve) { return null; }
+		Font originalFont = graphics.getFont();
+		graphics.setFont(FontManager.getRunescapeBoldFont());
+		try
 		{
-			Point position = player.getCanvasTextLocation(graphics, message, player.getLogicalHeight() + 40);
-			if (position != null)
+			if (menaphite) { draw(graphics, player, config.overheadMessage(), config.overheadColour(), 40); }
+			if (preserve)
 			{
-				OverlayUtil.renderTextLocation(graphics, position, message, config.overheadColour());
+				draw(graphics, player, config.preserveMessage(), config.preserveColour(), menaphite ? 65 : 40);
 			}
 		}
+		finally { graphics.setFont(originalFont); }
 		return null;
+	}
+
+	private void draw(Graphics2D graphics, Player player, String text, Color colour, int height)
+	{
+		String message = text.trim();
+		if (!message.isEmpty())
+		{
+			Point position = player.getCanvasTextLocation(graphics, message, player.getLogicalHeight() + height);
+			if (position != null)
+			{
+				OverlayUtil.renderTextLocation(graphics, position, message, colour);
+			}
+		}
 	}
 }

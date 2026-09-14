@@ -47,7 +47,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 	private final Map<Effect, ReminderInfoBox> infoBoxes = new EnumMap<>(Effect.class);
 	private volatile boolean running;
 	private boolean needsSync;
-
+	private boolean restoreDecayOnSync;
 	@Provides
 	MenaphiteRemedyRemindersConfig provideConfig(ConfigManager manager)
 	{
@@ -60,11 +60,11 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		running = true;
 		overlayManager.add(overhead);
 		needsSync = true;
+		restoreDecayOnSync = client.getGameState() != GameState.LOGGED_IN;
 		clientThread.invokeLater(() ->
 		{
 			if (running && client.getGameState() == GameState.LOGGED_IN)
 			{
-				preserveReminder.initialize();
 				synchronizeTimers();
 			}
 		});
@@ -84,6 +84,8 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 
 	private void synchronizeTimers()
 	{
+		preserveReminder.initialize(restoreDecayOnSync);
+		restoreDecayOnSync = false;
 		for (Effect effect : Effect.values()) { updateTimer(effect.varbit); }
 		updateTimer(VarbitID.STATRENEWAL_POTION_TIMER);
 		updateTimer(VarbitID.MOONLIGHT_POTION_TIME);
@@ -134,7 +136,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 	private int nextReminderTarget()
 	{
 		int target = Integer.MAX_VALUE;
-		if (!hasRemedy()) { return target; }
+		if (!config.menaphiteEnabled() || !hasRemedy() || !(config.sendNotification() || config.showInfobox() || config.showOverhead())) { return target; }
 		int threshold = ReminderTimers.reminderTicks(config.remindSeconds());
 		for (Effect effect : Effect.values())
 		{
@@ -158,7 +160,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 
 	private void updateReminders(boolean mayNotify)
 	{
-		if (!hasRemedy())
+		if (!config.menaphiteEnabled() || !hasRemedy())
 		{
 			clearOutputs();
 			return;
@@ -229,11 +231,19 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		{
 			case LOGIN_SCREEN:
 			case LOGIN_SCREEN_AUTHENTICATOR:
+				preserveReminder.logout();
+				restoreDecayOnSync = true;
 				reset();
 				break;
 			case HOPPING:
+				preserveReminder.logout();
+				restoreDecayOnSync = true;
+				clearOutputs();
+				needsSync = true;
+				break;
 			case CONNECTION_LOST:
 				preserveReminder.reset();
+				restoreDecayOnSync = false;
 				clearOutputs();
 				needsSync = true;
 				break;
