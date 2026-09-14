@@ -228,6 +228,29 @@ public class PreserveReminderTest
 		plugin.shutDown();
 	}
 
+	@Test
+	public void saltsAndEveryOverloadFamilySuppressBothPreserveModes()
+	{
+		learnCycle();
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		for (int timer : new int[]{VarbitID.NZONE_OVERLOAD_POTION_EFFECTS, VarbitID.RAIDS_OVERLOAD_TIMER,
+			VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS, VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER})
+		{
+			when(client.getVarbitValue(timer)).thenReturn(10);
+			reminder.tick(plugin, Integer.MAX_VALUE);
+			reminder.tick(plugin, 133);
+			verifyNoInteractions(boxes, notifier);
+			verify(overhead, never()).showPreserve();
+			when(client.getVarbitValue(timer)).thenReturn(0);
+		}
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).addInfoBox(any());
+		when(client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER)).thenReturn(1);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any());
+	}
+
 	private void learnCycle()
 	{
 		reminder.onStatChanged(new StatChanged(Skill.STRENGTH, 0, 70, 80));

@@ -63,7 +63,8 @@ final class PreserveReminder
 			&& skill != Skill.RANGED && skill != Skill.MAGIC) { return; }
 		int current = event.getBoostedLevel();
 		Integer previous = levels.put(skill, current);
-		if (previous != null && previous == current + 1 && current >= event.getLevel() && !divineProtected(skill))
+		if (previous != null && previous == current + 1 && current >= event.getLevel()
+			&& !reboostingEffectActive() && !divineProtected(skill))
 		{
 			int now = client.getTickCount();
 			cycle.advance(now, client.isPrayerActive(Prayer.PRESERVE));
@@ -113,7 +114,7 @@ final class PreserveReminder
 		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
 		boolean preempt = config.promptPreserve() && target != Integer.MAX_VALUE && target > now;
-		if (!config.preserveEnabled() || (!regular && !preempt) || active
+		if (!config.preserveEnabled() || (!regular && !preempt) || active || reboostingEffectActive()
 			|| client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 0
 			|| client.getRealSkillLevel(Skill.PRAYER) < 55 || client.getBoostedSkillLevel(Skill.PRAYER) <= 0)
 		{
@@ -184,6 +185,14 @@ final class PreserveReminder
 				&& (!combat || !divineProtected(skill))) { return true; }
 		}
 		return false;
+	}
+
+	private boolean reboostingEffectActive()
+	{
+		return client.getVarbitValue(VarbitID.NZONE_OVERLOAD_POTION_EFFECTS) > 0
+			|| client.getVarbitValue(VarbitID.RAIDS_OVERLOAD_TIMER) > 0
+			|| client.getVarbitValue(VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS) > 0
+			|| client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER) > 0;
 	}
 
 	private void removeBox()
