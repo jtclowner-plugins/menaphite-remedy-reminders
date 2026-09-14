@@ -118,6 +118,15 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 
 	private void updateReminders(boolean mayNotify)
 	{
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory == null || !(inventory.contains(ItemID._1DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._2DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._3DOSESTATRENEWAL)
+			|| inventory.contains(ItemID._4DOSESTATRENEWAL)))
+		{
+			clearOutputs();
+			return;
+		}
 		int threshold = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean anyVisibleReminder = false;
 		for (Effect effect : Effect.values())

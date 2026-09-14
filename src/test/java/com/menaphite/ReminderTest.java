@@ -104,23 +104,44 @@ public class ReminderTest
 	}
 
 	@Test
-	public void standardNotifierReceivesReminderText() throws Exception
+	public void remindersRequireADrinkableRemedyAndAcceptEveryDose() throws Exception
 	{
 		Client client = mock(Client.class);
 		Notifier notifier = mock(Notifier.class);
+		ReminderOverhead overhead = mock(ReminderOverhead.class);
+		ItemContainer inventory = mock(ItemContainer.class);
 		MenaphiteRemedyRemindersConfig config = new MenaphiteRemedyRemindersConfig()
 		{
 			public boolean showInfobox() { return false; }
 		};
-		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, new ReminderOverhead(client, config));
+		MenaphiteRemedyRemindersPlugin plugin = createPlugin(client, notifier, config, overhead);
 		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
 		when(client.getVarbitValue(Effect.DIVINE_RANGING.varbit)).thenReturn(16);
-		plugin.startUp();
-		plugin.onGameTick(new GameTick());
-		plugin.onGameTick(new GameTick());
-		verify(notifier).notify("Sip Menaphite remedy! Divine ranging expires in 10s");
-		verifyNoMoreInteractions(notifier);
-		plugin.shutDown();
+		for (int dose : new int[]{ItemID._1DOSESTATRENEWAL, ItemID._2DOSESTATRENEWAL,
+			ItemID._3DOSESTATRENEWAL, ItemID._4DOSESTATRENEWAL})
+		{
+			when(client.getItemContainer(InventoryID.INV)).thenReturn(null);
+			plugin.startUp();
+			plugin.onGameTick(new GameTick());
+			when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+			plugin.onGameTick(new GameTick()); // Empty inventory.
+			when(inventory.contains(ItemID.Cert._4DOSESTATRENEWAL)).thenReturn(true);
+			plugin.onGameTick(new GameTick()); // Noted remedy is not drinkable.
+			verifyNoInteractions(notifier);
+			when(inventory.contains(dose)).thenReturn(true);
+			plugin.onGameTick(new GameTick());
+			verify(notifier).notify("Sip Menaphite remedy! Divine ranging expires in 8s");
+			verify(overhead).show();
+			clearInvocations(overhead);
+			when(inventory.contains(dose)).thenReturn(false);
+			plugin.onGameTick(new GameTick());
+			verify(overhead).clear();
+			when(inventory.contains(dose)).thenReturn(true);
+			plugin.onGameTick(new GameTick());
+			verifyNoMoreInteractions(notifier);
+			plugin.shutDown();
+			reset(inventory, notifier, overhead);
+		}
 	}
 
 	@Test
@@ -141,6 +162,7 @@ public class ReminderTest
 		plugin.startUp();
 		plugin.onGameTick(new GameTick()); // Inventory unavailable.
 		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(inventory.contains(ItemID._4DOSESTATRENEWAL)).thenReturn(true);
 		when(inventory.contains(ItemID.SATURATED_HEART)).thenReturn(true);
 		plugin.onGameTick(new GameTick());
 		verifyNoInteractions(notifier);
