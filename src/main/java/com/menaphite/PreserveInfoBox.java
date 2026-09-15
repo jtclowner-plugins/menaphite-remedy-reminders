@@ -10,12 +10,12 @@ import net.runelite.client.ui.overlay.infobox.InfoBox;
 
 final class PreserveInfoBox extends InfoBox
 {
-	PreserveInfoBox(BufferedImage image, Plugin plugin)
+	PreserveInfoBox(BufferedImage image, Plugin plugin, boolean turnOff)
 	{
-		super(captionedImage(image), plugin);
+		super(captionedImage(image, turnOff), plugin);
 	}
 
-	private static BufferedImage captionedImage(BufferedImage icon)
+	private static BufferedImage captionedImage(BufferedImage icon, boolean turnOff)
 	{
 		BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D graphics = image.createGraphics();
@@ -26,7 +26,7 @@ final class PreserveInfoBox extends InfoBox
 			graphics.setComposite(AlphaComposite.SrcOver);
 			graphics.setFont(FontManager.getRunescapeSmallFont());
 			int y = 15;
-			for (String line : new String[]{"Turn", "on"})
+			for (String line : new String[]{"Turn", turnOff ? "off" : "on"})
 			{
 				int x = (32 - graphics.getFontMetrics().stringWidth(line)) / 2;
 				graphics.setColor(Color.BLACK);
@@ -40,8 +40,13 @@ final class PreserveInfoBox extends InfoBox
 		return image;
 	}
 
-	void update(PreservePlan plan, int predictedTicks)
+	void update(PreservePlan plan, int predictedTicks, boolean turnOff)
 	{
+		if (turnOff)
+		{
+			setTooltip("Turn off Preserve: fresh divine boosts do not benefit from it.");
+			return;
+		}
 		if (plan == null)
 		{
 			setTooltip("Turn on Preserve to extend your boosted stats.");

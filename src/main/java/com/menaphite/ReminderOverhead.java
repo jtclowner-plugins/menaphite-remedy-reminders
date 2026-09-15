@@ -24,6 +24,7 @@ final class ReminderOverhead extends Overlay
 	private final MenaphiteRemedyRemindersConfig config;
 	private volatile long visibleUntil;
 	private volatile long preserveUntil;
+	private volatile String preserveText;
 
 	@Inject
 	ReminderOverhead(Client client, MenaphiteRemedyRemindersConfig config)
@@ -36,8 +37,14 @@ final class ReminderOverhead extends Overlay
 
 	void show() { visibleUntil = System.nanoTime() + TimeUnit.SECONDS.toNanos(5); }
 	void clear() { visibleUntil = 0; }
-	void showPreserve() { preserveUntil = System.nanoTime() + TimeUnit.SECONDS.toNanos(5); }
-	void clearPreserve() { preserveUntil = 0; }
+	void showPreserve() { showPreserve(config.preserveMessage()); }
+	void showPreserveOff() { showPreserve("Turn off Preserve!"); }
+	private void showPreserve(String text)
+	{
+		preserveText = text;
+		preserveUntil = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+	}
+	void clearPreserve() { preserveUntil = 0; preserveText = null; }
 
 	@Override
 	public Dimension render(Graphics2D graphics)
@@ -58,7 +65,7 @@ final class ReminderOverhead extends Overlay
 			if (menaphite) { draw(graphics, player, config.overheadMessage(), config.overheadColour(), 40); }
 			if (preserve)
 			{
-				draw(graphics, player, config.preserveMessage(), config.preserveColour(), menaphite ? 65 : 40);
+				draw(graphics, player, preserveText, config.preserveColour(), menaphite ? 65 : 40);
 			}
 		}
 		finally { graphics.setFont(originalFont); }

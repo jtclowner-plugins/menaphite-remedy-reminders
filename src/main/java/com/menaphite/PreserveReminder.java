@@ -26,11 +26,13 @@ final class PreserveReminder
 	@Inject private Notifier notifier;
 	@Inject private ReminderOverhead overhead;
 	private static final String SAVED_SEGMENT = "combatDecaySegment";
+	private static final int FRESH_DIVINE_TICKS = 400;
 
 	private final CombatDecayCycle cycle = new CombatDecayCycle();
 	private final Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
 	private PreservePlan plan;
 	private PreserveInfoBox box;
+	private boolean boxTurnsOff;
 	private boolean tracking;
 	private boolean restored;
 	private boolean notified;
@@ -113,10 +115,22 @@ final class PreserveReminder
 		cycle.advance(now, active);
 		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
+		boolean turnOff = active && !hasNonDivineBoost() && hasFreshDivineBoost();
 		boolean preempt = config.promptPreserve() && target != Integer.MAX_VALUE && target > now;
-		if (!config.preserveEnabled() || (!regular && !preempt) || active || reboostingEffectActive()
+		if (!config.preserveEnabled() || (!regular && !preempt && !turnOff) || reboostingEffectActive()
 			|| client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 0
 			|| client.getRealSkillLevel(Skill.PRAYER) < 55 || client.getBoostedSkillLevel(Skill.PRAYER) <= 0)
+		{
+			cancel();
+			return;
+		}
+		if (turnOff)
+		{
+			plan = null;
+			showPrompt(plugin, true);
+			return;
+		}
+		if (active)
 		{
 			cancel();
 			return;
@@ -138,23 +152,36 @@ final class PreserveReminder
 			}
 		}
 		else { plan = null; }
+		showPrompt(plugin, false);
+	}
+
+	private void showPrompt(Plugin plugin, boolean turnOff)
+	{
 		if (config.preserveNotification() && !notified)
 		{
-			notifier.notify("Enable Preserve and leave it on to extend your boosted stats.");
+			notifier.notify(turnOff ? "Turn off Preserve: fresh divine boosts do not benefit from it."
+				: "Enable Preserve and leave it on to extend your boosted stats.");
 			notified = true;
 		}
-		if (config.preserveOverhead() && !overheadShown) { overhead.showPreserve(); overheadShown = true; }
+		if (config.preserveOverhead() && !overheadShown)
+		{
+			if (turnOff) { overhead.showPreserveOff(); }
+			else { overhead.showPreserve(); }
+			overheadShown = true;
+		}
 		if (!config.preserveOverhead()) { overhead.clearPreserve(); overheadShown = false; }
 		if (!config.preserveInfobox()) { removeBox(); return; }
 		boolean added = false;
+		if (box != null && boxTurnsOff != turnOff) { removeBox(); }
 		if (box == null)
 		{
 			BufferedImage image = spriteManager.getSprite(SpriteID.Prayeron.PRESERVE, 0);
 			if (image == null) { return; }
-			box = new PreserveInfoBox(image, plugin);
+			box = new PreserveInfoBox(image, plugin, turnOff);
+			boxTurnsOff = turnOff;
 			added = true;
 		}
-		box.update(plan, plan == null ? 0 : PreservePlan.afterSip(cycle, plan.target - now, 0));
+		box.update(plan, plan == null ? 0 : PreservePlan.afterSip(cycle, plan.target - now, 0), turnOff);
 		if (restored) { box.setTooltip(box.getTooltip() + "<br>Cycle estimated from the saved logout segment."); }
 		if (added) { infoBoxManager.addInfoBox(box); }
 	}
@@ -187,6 +214,31 @@ final class PreserveReminder
 		return false;
 	}
 
+	private boolean hasNonDivineBoost()
+	{
+		for (Skill skill : Skill.values())
+		{
+			if (skill == Skill.OVERALL || skill == Skill.HITPOINTS || skill == Skill.PRAYER) { continue; }
+			if (client.getBoostedSkillLevel(skill) > client.getRealSkillLevel(skill) && !divineProtected(skill))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hasFreshDivineBoost()
+	{
+		return client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINEBASTION_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINEBATTLEMAGE_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINEATTACK_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINESTRENGTH_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINEDEFENCE_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINERANGE_POTION_TIME) >= FRESH_DIVINE_TICKS
+			|| client.getVarbitValue(VarbitID.DIVINEMAGIC_POTION_TIME) >= FRESH_DIVINE_TICKS;
+	}
+
 	private boolean reboostingEffectActive()
 	{
 		return client.getVarbitValue(VarbitID.NZONE_OVERLOAD_POTION_EFFECTS) > 0
@@ -197,7 +249,7 @@ final class PreserveReminder
 
 	private void removeBox()
 	{
-		if (box != null) { infoBoxManager.removeInfoBox(box); box = null; }
+		if (box != null) { infoBoxManager.removeInfoBox(box); box = null; boxTurnsOff = false; }
 	}
 
 	void reset()

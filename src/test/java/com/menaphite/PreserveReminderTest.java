@@ -251,6 +251,36 @@ public class PreserveReminderTest
 		verify(boxes).removeInfoBox(any());
 	}
 
+	@Test
+	public void freshDivinesPromptToTurnOffAnOtherwiseWastedPreserve()
+	{
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(400);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		ArgumentCaptor<PreserveInfoBox> capture = ArgumentCaptor.forClass(PreserveInfoBox.class);
+		verify(boxes).addInfoBox(capture.capture());
+		assertTrue(capture.getValue().getTooltip().contains("Turn off Preserve"));
+		verify(overhead).showPreserveOff();
+
+		clearInvocations(boxes, overhead);
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(399);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any());
+		verify(overhead).clearPreserve();
+	}
+
+	@Test
+	public void freshDivinesDoNotPromptToTurnOffWhileARegularBoostRemains()
+	{
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(500);
+		when(client.getRealSkillLevel(Skill.WOODCUTTING)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.WOODCUTTING)).thenReturn(80);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes, notifier);
+		verify(overhead, never()).showPreserveOff();
+	}
+
 	private void learnCycle()
 	{
 		reminder.onStatChanged(new StatChanged(Skill.STRENGTH, 0, 70, 80));
