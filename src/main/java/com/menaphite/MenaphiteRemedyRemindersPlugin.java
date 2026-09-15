@@ -27,9 +27,9 @@ import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 @PluginDescriptor(
-	name = "Menaphite Remedy Reminders",
-	description = "Reminds you to drink a Menaphite remedy before timed boosts expire",
-	tags = {"menaphite", "remedy", "potion", "divine", "saturated", "heart"}
+	name = "Preserve & Menaphite Optimiser",
+	description = "Optimises Preserve and Menaphite remedy timing to maximise boost duration",
+	tags = {"preserve", "menaphite", "remedy", "divine", "potion", "boost", "heart", "saturated", "timer", "reminder", "decay", "stats"}
 )
 public class MenaphiteRemedyRemindersPlugin extends Plugin
 {
