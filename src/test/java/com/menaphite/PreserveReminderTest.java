@@ -229,13 +229,13 @@ public class PreserveReminderTest
 	}
 
 	@Test
-	public void saltsAndEveryOverloadFamilySuppressBothPreserveModes()
+	public void everyOverloadFamilySuppressesBothPreserveModes()
 	{
 		learnCycle();
 		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
 		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
 		for (int timer : new int[]{VarbitID.NZONE_OVERLOAD_POTION_EFFECTS, VarbitID.RAIDS_OVERLOAD_TIMER,
-			VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS, VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER})
+			VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS})
 		{
 			when(client.getVarbitValue(timer)).thenReturn(10);
 			reminder.tick(plugin, Integer.MAX_VALUE);
@@ -246,9 +246,69 @@ public class PreserveReminderTest
 		}
 		reminder.tick(plugin, Integer.MAX_VALUE);
 		verify(boxes).addInfoBox(any());
-		when(client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER)).thenReturn(1);
+		when(client.getVarbitValue(VarbitID.NZONE_OVERLOAD_POTION_EFFECTS)).thenReturn(1);
 		reminder.tick(plugin, Integer.MAX_VALUE);
 		verify(boxes).removeInfoBox(any());
+	}
+
+	@Test
+	public void spentSmellingSaltsUseAPlannedPreserveWindowButCarriedSaltsSuppressIt()
+	{
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		when(client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER)).thenReturn(10);
+		learnCycle();
+		when(client.getTickCount()).thenReturn(33);
+		reminder.onVarbitChanged(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER);
+		CombatDecayCycle cycle = new CombatDecayCycle();
+		cycle.observe(0);
+		cycle.advance(33, false);
+		PreservePlan plan = PreservePlan.align(cycle, 33, 283, true);
+		assertNotNull(plan);
+		for (int tick = 33; tick <= plan.enable; tick++)
+		{
+			when(client.getTickCount()).thenReturn(tick);
+			reminder.tick(plugin, Integer.MAX_VALUE);
+			if (tick < plan.enable) { verifyNoInteractions(boxes); }
+		}
+		verify(boxes).addInfoBox(any());
+
+		reminder.reset();
+		clearInvocations(boxes, notifier, overhead);
+		ItemContainer inventory = mock(ItemContainer.class);
+		when(inventory.contains(ItemID.TOA_SUPPLY_STATS_1)).thenReturn(true);
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes, notifier, overhead);
+	}
+
+	@Test
+	public void carriedReboostingPotionsSuppressOnlyTurnOnPreserve()
+	{
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		ItemContainer inventory = mock(ItemContainer.class);
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		for (int item : new int[]{ItemID.NZONE1DOSEOVERLOADPOTION, ItemID.NZONE2DOSEOVERLOADPOTION,
+			ItemID.NZONE3DOSEOVERLOADPOTION, ItemID.NZONE4DOSEOVERLOADPOTION,
+			ItemID.RAIDS_VIAL_OVERLOAD_WEAK_1, ItemID.RAIDS_VIAL_OVERLOAD_WEAK_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_WEAK_3, ItemID.RAIDS_VIAL_OVERLOAD_WEAK_4,
+			ItemID.RAIDS_VIAL_OVERLOAD_1, ItemID.RAIDS_VIAL_OVERLOAD_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_3, ItemID.RAIDS_VIAL_OVERLOAD_4,
+			ItemID.RAIDS_VIAL_OVERLOAD_STRONG_1, ItemID.RAIDS_VIAL_OVERLOAD_STRONG_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_STRONG_3, ItemID.RAIDS_VIAL_OVERLOAD_STRONG_4,
+			ItemID.DEADMAN1DOSEOVERLOAD, ItemID.DEADMAN2DOSEOVERLOAD,
+			ItemID.DEADMAN3DOSEOVERLOAD, ItemID.DEADMAN4DOSEOVERLOAD,
+			ItemID.TOA_SUPPLY_STATS_1, ItemID.TOA_SUPPLY_STATS_2})
+		{
+			when(inventory.contains(item)).thenReturn(true);
+			reminder.tick(plugin, Integer.MAX_VALUE);
+			verifyNoInteractions(boxes, notifier);
+			verify(overhead, never()).showPreserve();
+			when(inventory.contains(item)).thenReturn(false);
+		}
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).addInfoBox(any());
 	}
 
 	@Test

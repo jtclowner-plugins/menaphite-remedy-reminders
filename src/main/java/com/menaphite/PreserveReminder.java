@@ -5,8 +5,10 @@ import java.util.EnumMap;
 import java.util.Map;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.SpriteID;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.gameval.VarbitID;
@@ -33,6 +35,7 @@ final class PreserveReminder
 	private PreservePlan plan;
 	private PreserveInfoBox box;
 	private boolean boxTurnsOff;
+	private int smellingSaltsExpiry = -1;
 	private boolean tracking;
 	private boolean restored;
 	private boolean notified;
@@ -56,6 +59,7 @@ final class PreserveReminder
 		{
 			levels.put(skill, client.getBoostedSkillLevel(skill));
 		}
+		syncSmellingSaltsExpiry();
 	}
 
 	void onStatChanged(StatChanged event)
@@ -102,6 +106,7 @@ final class PreserveReminder
 
 	void onVarbitChanged(int id)
 	{
+		if (id == VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER) { syncSmellingSaltsExpiry(); }
 		if (id == VarbitID.PRAYER_PRESERVE && !client.isPrayerActive(Prayer.PRESERVE))
 		{
 			cycle.preserveTicks = 0;
@@ -116,8 +121,13 @@ final class PreserveReminder
 		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
 		boolean turnOff = active && !hasNonDivineBoost() && hasFreshDivineBoost();
-		boolean preempt = config.promptPreserve() && target != Integer.MAX_VALUE && target > now;
-		if (!config.preserveEnabled() || (!regular && !preempt && !turnOff) || reboostingEffectActive()
+		int menaphiteTarget = config.promptPreserve() ? target : Integer.MAX_VALUE;
+		int saltsTarget = smellingSaltsEffectActive() && !hasSmellingSalts() ? smellingSaltsExpiry : Integer.MAX_VALUE;
+		int syncTarget = Math.min(menaphiteTarget, saltsTarget);
+		boolean preempt = syncTarget != Integer.MAX_VALUE && syncTarget > now;
+		if (!config.preserveEnabled() || (!regular && !preempt && !turnOff) || overloadEffectActive()
+			|| (smellingSaltsEffectActive() && hasSmellingSalts())
+			|| (!active && hasCarriedReboostingPotion())
 			|| client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 0
 			|| client.getRealSkillLevel(Skill.PRAYER) < 55 || client.getBoostedSkillLevel(Skill.PRAYER) <= 0)
 		{
@@ -138,13 +148,13 @@ final class PreserveReminder
 		if (preempt)
 		{
 			// A regular boost permits early activation, but never bypass the sip timing.
-			if (!cycle.known() || (!regular && (long) target - now + lead > 150))
+			if (!cycle.known() || (!regular && (long) syncTarget - now + lead > 150))
 			{
 				cancel();
 				return;
 			}
-			if (plan != null && !plan.matches(cycle, now, target)) { plan = null; }
-			if (plan == null) { plan = PreservePlan.align(cycle, now, target, regular); }
+			if (plan != null && !plan.matches(cycle, now, syncTarget)) { plan = null; }
+			if (plan == null) { plan = PreservePlan.align(cycle, now, syncTarget, regular); }
 			if (plan == null || now < plan.enable)
 			{
 				clearOutputs();
@@ -241,10 +251,58 @@ final class PreserveReminder
 
 	private boolean reboostingEffectActive()
 	{
+		return overloadEffectActive() || smellingSaltsEffectActive();
+	}
+
+	private boolean overloadEffectActive()
+	{
 		return client.getVarbitValue(VarbitID.NZONE_OVERLOAD_POTION_EFFECTS) > 0
 			|| client.getVarbitValue(VarbitID.RAIDS_OVERLOAD_TIMER) > 0
-			|| client.getVarbitValue(VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS) > 0
-			|| client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER) > 0;
+			|| client.getVarbitValue(VarbitID.DEADMAN_OVERLOAD_POTION_EFFECTS) > 0;
+	}
+
+	private boolean smellingSaltsEffectActive()
+	{
+		return client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER) > 0;
+	}
+
+	private void syncSmellingSaltsExpiry()
+	{
+		int timer = client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER);
+		// The salts buff bar timer advances in 25-tick units.
+		smellingSaltsExpiry = timer > 0 ? client.getTickCount() + timer * 25 : -1;
+	}
+
+	private boolean hasCarriedReboostingPotion()
+	{
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		return inventory != null && containsAny(inventory,
+			ItemID.NZONE1DOSEOVERLOADPOTION, ItemID.NZONE2DOSEOVERLOADPOTION,
+			ItemID.NZONE3DOSEOVERLOADPOTION, ItemID.NZONE4DOSEOVERLOADPOTION,
+			ItemID.RAIDS_VIAL_OVERLOAD_WEAK_1, ItemID.RAIDS_VIAL_OVERLOAD_WEAK_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_WEAK_3, ItemID.RAIDS_VIAL_OVERLOAD_WEAK_4,
+			ItemID.RAIDS_VIAL_OVERLOAD_1, ItemID.RAIDS_VIAL_OVERLOAD_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_3, ItemID.RAIDS_VIAL_OVERLOAD_4,
+			ItemID.RAIDS_VIAL_OVERLOAD_STRONG_1, ItemID.RAIDS_VIAL_OVERLOAD_STRONG_2,
+			ItemID.RAIDS_VIAL_OVERLOAD_STRONG_3, ItemID.RAIDS_VIAL_OVERLOAD_STRONG_4,
+			ItemID.DEADMAN1DOSEOVERLOAD, ItemID.DEADMAN2DOSEOVERLOAD,
+			ItemID.DEADMAN3DOSEOVERLOAD, ItemID.DEADMAN4DOSEOVERLOAD)
+			|| hasSmellingSalts();
+	}
+
+	private boolean hasSmellingSalts()
+	{
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		return inventory != null && containsAny(inventory, ItemID.TOA_SUPPLY_STATS_1, ItemID.TOA_SUPPLY_STATS_2);
+	}
+
+	private boolean containsAny(ItemContainer inventory, int... itemIds)
+	{
+		for (int itemId : itemIds)
+		{
+			if (inventory.contains(itemId)) { return true; }
+		}
+		return false;
 	}
 
 	private void removeBox()
@@ -258,6 +316,7 @@ final class PreserveReminder
 		cancel();
 		cycle.reset();
 		levels.clear();
+		smellingSaltsExpiry = -1;
 		tracking = false;
 		restored = false;
 	}
