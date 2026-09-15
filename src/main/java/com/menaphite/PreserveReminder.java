@@ -127,7 +127,7 @@ final class PreserveReminder
 		if (turnOff)
 		{
 			plan = null;
-			showPrompt(plugin, true);
+			showPrompt(plugin, now, true);
 			return;
 		}
 		if (active)
@@ -152,10 +152,10 @@ final class PreserveReminder
 			}
 		}
 		else { plan = null; }
-		showPrompt(plugin, false);
+		showPrompt(plugin, now, false);
 	}
 
-	private void showPrompt(Plugin plugin, boolean turnOff)
+	private void showPrompt(Plugin plugin, int now, boolean turnOff)
 	{
 		if (config.preserveNotification() && !notified)
 		{
