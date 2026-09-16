@@ -25,7 +25,7 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 	default boolean preserveEnabled() { return true; }
 	@Range(min = 1, max = 300)
 	@ConfigItem(keyName = "remindSeconds", name = "Remind before expiry",
-		description = "Prompt to sip immediately this many seconds before expiry. Preserve planning targets this exact prompt time.", section = MENAPHITE, position = 7)
+		description = "Prompt to sip at least this many seconds before expiry. Preserve planning targets this prompt time.", section = MENAPHITE, position = 7)
 	default int remindSeconds()
 	{
 		return 10;

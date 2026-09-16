@@ -175,8 +175,8 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 			{
 				if (config.sendNotification())
 				{
-					notifier.notify("Sip Menaphite remedy! " + effect.displayName + " expires in "
-						+ ReminderTimers.secondsRemaining(timers.remaining(effect)) + "s");
+					notifier.notify("Sip Menaphite remedy! " + effect.displayName + " expires in about "
+						+ config.remindSeconds() + "s");
 				}
 				if (config.showOverhead()) { overhead.show(); }
 			}

@@ -149,7 +149,7 @@ public class ReminderTest
 			verifyNoInteractions(notifier);
 			when(inventory.contains(dose)).thenReturn(true);
 			plugin.onGameTick(new GameTick());
-			verify(notifier).notify("Sip Menaphite remedy! Divine ranging expires in 8s");
+			verify(notifier).notify("Sip Menaphite remedy! Divine ranging expires in about 10s");
 			verify(overhead).show();
 			clearInvocations(overhead);
 			when(inventory.contains(dose)).thenReturn(false);
