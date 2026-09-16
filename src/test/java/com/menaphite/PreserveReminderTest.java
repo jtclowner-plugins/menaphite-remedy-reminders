@@ -85,7 +85,7 @@ public class PreserveReminderTest
 			reminder.tick(plugin, 133);
 		}
 		verify(boxes).removeInfoBox(capture.getValue());
-		verify(boxes, times(1)).addInfoBox(any()); // Never requests OFF or another activation.
+		verify(boxes, times(2)).addInfoBox(any()); // Prompts OFF once the missed Menaphite target passes.
 	}
 
 	@Test
@@ -327,6 +327,36 @@ public class PreserveReminderTest
 		reminder.tick(plugin, Integer.MAX_VALUE);
 		verify(boxes).removeInfoBox(any());
 		verify(overhead).clearPreserve();
+	}
+
+	@Test
+	public void activePreserveWithoutABenefitingBoostPromptsToTurnOff()
+	{
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		ArgumentCaptor<PreserveInfoBox> capture = ArgumentCaptor.forClass(PreserveInfoBox.class);
+		verify(boxes).addInfoBox(capture.capture());
+		assertTrue(capture.getValue().getTooltip().contains("Turn off Preserve"));
+	}
+
+	@Test
+	public void plannedMenaphiteSipKeepsPreserveOnUntilItsTarget()
+	{
+		learnCycle();
+		CombatDecayCycle cycle = new CombatDecayCycle();
+		cycle.observe(0);
+		PreservePlan plan = PreservePlan.align(cycle, 0, 133);
+		assertNotNull(plan);
+		for (int tick = 0; tick <= plan.enable; tick++)
+		{
+			when(client.getTickCount()).thenReturn(tick);
+			reminder.tick(plugin, 133);
+		}
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		when(client.getTickCount()).thenReturn(plan.enable + 1);
+		reminder.tick(plugin, 133);
+		verify(boxes).removeInfoBox(any());
+		verify(boxes, times(1)).addInfoBox(any());
 	}
 
 	@Test

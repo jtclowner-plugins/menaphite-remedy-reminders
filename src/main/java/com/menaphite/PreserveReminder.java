@@ -28,7 +28,6 @@ final class PreserveReminder
 	@Inject private Notifier notifier;
 	@Inject private ReminderOverhead overhead;
 	private static final String SAVED_SEGMENT = "combatDecaySegment";
-	private static final int FRESH_DIVINE_TICKS = 400;
 
 	private final CombatDecayCycle cycle = new CombatDecayCycle();
 	private final Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
@@ -36,6 +35,7 @@ final class PreserveReminder
 	private PreserveInfoBox box;
 	private boolean boxTurnsOff;
 	private int smellingSaltsExpiry = -1;
+	private int plannedMenaphiteTarget = -1;
 	private boolean tracking;
 	private boolean restored;
 	private boolean notified;
@@ -120,8 +120,8 @@ final class PreserveReminder
 		cycle.advance(now, active);
 		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
-		boolean turnOff = active && !hasNonDivineBoost() && hasFreshDivineBoost();
 		int menaphiteTarget = config.promptPreserve() ? target : Integer.MAX_VALUE;
+		boolean turnOff = active && !hasNonDivineBoost() && !awaitingPlannedMenaphite(now, menaphiteTarget);
 		int saltsTarget = smellingSaltsEffectActive() && !hasSmellingSalts() ? smellingSaltsExpiry : Integer.MAX_VALUE;
 		int syncTarget = Math.min(menaphiteTarget, saltsTarget);
 		boolean preempt = syncTarget != Integer.MAX_VALUE && syncTarget > now;
@@ -162,7 +162,13 @@ final class PreserveReminder
 			}
 		}
 		else { plan = null; }
+		if (plan != null && plan.target == menaphiteTarget) { plannedMenaphiteTarget = plan.target; }
 		showPrompt(plugin, now, false);
+	}
+
+	private boolean awaitingPlannedMenaphite(int now, int menaphiteTarget)
+	{
+		return plannedMenaphiteTarget == menaphiteTarget && menaphiteTarget > now;
 	}
 
 	private void showPrompt(Plugin plugin, int now, boolean turnOff)
@@ -237,18 +243,6 @@ final class PreserveReminder
 		return false;
 	}
 
-	private boolean hasFreshDivineBoost()
-	{
-		return client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINEBASTION_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINEBATTLEMAGE_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINEATTACK_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINESTRENGTH_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINEDEFENCE_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINERANGE_POTION_TIME) >= FRESH_DIVINE_TICKS
-			|| client.getVarbitValue(VarbitID.DIVINEMAGIC_POTION_TIME) >= FRESH_DIVINE_TICKS;
-	}
-
 	private boolean reboostingEffectActive()
 	{
 		return overloadEffectActive() || smellingSaltsEffectActive();
@@ -317,6 +311,7 @@ final class PreserveReminder
 		cycle.reset();
 		levels.clear();
 		smellingSaltsExpiry = -1;
+		plannedMenaphiteTarget = -1;
 		tracking = false;
 		restored = false;
 	}
