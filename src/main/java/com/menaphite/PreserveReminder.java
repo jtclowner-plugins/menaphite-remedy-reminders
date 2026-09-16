@@ -175,7 +175,7 @@ final class PreserveReminder
 	{
 		if (config.preserveNotification() && !notified)
 		{
-			notifier.notify(turnOff ? "Turn off Preserve: fresh divine boosts do not benefit from it."
+			notifier.notify(turnOff ? "Turn off Preserve: no active boosts benefit from it."
 				: "Enable Preserve and leave it on to extend your boosted stats.");
 			notified = true;
 		}

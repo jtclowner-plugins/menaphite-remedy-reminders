@@ -44,7 +44,7 @@ final class PreserveInfoBox extends InfoBox
 	{
 		if (turnOff)
 		{
-			setTooltip("Turn off Preserve: fresh divine boosts do not benefit from it.");
+			setTooltip("Turn off Preserve: no active boosts benefit from it.");
 			return;
 		}
 		if (plan == null)
