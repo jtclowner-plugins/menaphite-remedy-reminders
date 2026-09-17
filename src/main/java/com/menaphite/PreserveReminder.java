@@ -82,7 +82,6 @@ final class PreserveReminder
 
 	private boolean divineProtected(Skill skill)
 	{
-		if (client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER) > 0) { return false; }
 		boolean melee = skill == Skill.ATTACK || skill == Skill.STRENGTH || skill == Skill.DEFENCE;
 		if (melee && client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME) > 0) { return true; }
 		if ((skill == Skill.DEFENCE || skill == Skill.RANGED)
@@ -97,12 +96,23 @@ final class PreserveReminder
 			case DEFENCE: varbit = VarbitID.DIVINEDEFENCE_POTION_TIME; break;
 			case RANGED: varbit = VarbitID.DIVINERANGE_POTION_TIME; break;
 			case MAGIC:
-				if (client.getVarbitValue(VarbitID.SATURATED_HEART_TIME) > 0) { return true; }
+				if (heartProtected()) { return true; }
 				varbit = VarbitID.DIVINEMAGIC_POTION_TIME;
 				break;
 			default: return false;
 		}
 		return client.getVarbitValue(varbit) > 0;
+	}
+
+	private boolean heartProtected()
+	{
+		// The cooldown is shared with imbued heart, whose boost is never divine.
+		if (client.getVarbitValue(VarbitID.SATURATED_HEART_TIME) <= 0) { return false; }
+		// Compare game ticks, not raw varbits: heart units are 10 ticks, renewal units 25.
+		int heartTicks = client.getVarbitValue(VarbitID.IMBUED_HEART_TIMER) * 10;
+		int renewalTicks = client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER) * 25;
+		// Equal durations count as Menaphite being applied after the heart.
+		return heartTicks > renewalTicks;
 	}
 
 	void onVarbitChanged(int id)

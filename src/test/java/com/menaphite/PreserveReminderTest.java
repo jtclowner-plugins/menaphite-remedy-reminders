@@ -244,6 +244,7 @@ public class PreserveReminderTest
 			when(client.getTickCount()).thenReturn(tick);
 			if (tick == 5)
 			{
+				when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(0);
 				when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
 				when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
 				when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
@@ -452,6 +453,115 @@ public class PreserveReminderTest
 		reminder.tick(plugin, Integer.MAX_VALUE);
 		verifyNoInteractions(boxes, notifier);
 		verify(overhead, never()).showPreserveOff();
+	}
+
+	@Test
+	public void heartProtectionUsesCooldownComparedWithRenewal()
+	{
+		when(client.getRealSkillLevel(Skill.MAGIC)).thenReturn(99);
+		when(client.getBoostedSkillLevel(Skill.MAGIC)).thenReturn(112);
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		// saturated timer, cooldown units, renewal units, expected OFF (protected).
+		int[][] cases = {{450, 45, 0, 1}, {450, 45, 20, 0}, {450, 45, 18, 0},
+			{450, 45, 17, 1}, {500, 50, 18, 1}, {0, 50, 0, 0},
+			{0, 0, 20, 0}, {10, 1, 1, 0}, {10, 1, 0, 1}};
+		for (int[] state : cases)
+		{
+			reminder.reset();
+			clearInvocations(boxes, overhead);
+			when(client.getVarbitValue(VarbitID.SATURATED_HEART_TIME)).thenReturn(state[0]);
+			when(client.getVarbitValue(VarbitID.IMBUED_HEART_TIMER)).thenReturn(state[1]);
+			when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(state[2]);
+			reminder.tick(plugin, Integer.MAX_VALUE);
+			verify(overhead, times(state[3])).showPreserveOff();
+			verify(boxes, times(state[3])).addInfoBox(any(PreserveInfoBox.class));
+		}
+	}
+
+	@Test
+	public void divineTimersRemainAuthoritativeDuringRenewal()
+	{
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(99);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(118);
+		when(client.getVarbitValue(VarbitID.DIVINESTRENGTH_POTION_TIME)).thenReturn(100);
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(200);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserveOff();
+		when(client.getVarbitValue(VarbitID.DIVINESTRENGTH_POTION_TIME)).thenReturn(0);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes, never()).removeInfoBox(any()); // Combination still protects Strength.
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(0);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any()); // Boost survives, but protection is gone.
+	}
+
+	@Test
+	public void lingeringHeartTimersWithoutBoostsStillPromptOffButOnlyWhenEnabled()
+	{
+		when(client.getRealSkillLevel(Skill.MAGIC)).thenReturn(99);
+		when(client.getBoostedSkillLevel(Skill.MAGIC)).thenReturn(99);
+		when(client.getVarbitValue(VarbitID.SATURATED_HEART_TIME)).thenReturn(450);
+		when(client.getVarbitValue(VarbitID.IMBUED_HEART_TIMER)).thenReturn(45);
+		when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes, never()).addInfoBox(any());
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserveOff();
+		// Another decaying boost is enough to keep Preserve, even with Magic at base.
+		when(client.getRealSkillLevel(Skill.ATTACK)).thenReturn(99);
+		when(client.getBoostedSkillLevel(Skill.ATTACK)).thenReturn(100);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any());
+	}
+
+	@Test
+	public void convertedHeartDecayCanTeachTheCycleButProtectedHeartCannot() throws Exception
+	{
+		when(client.getVarbitValue(VarbitID.SATURATED_HEART_TIME)).thenReturn(450);
+		when(client.getVarbitValue(VarbitID.IMBUED_HEART_TIMER)).thenReturn(45);
+		Field field = PreserveReminder.class.getDeclaredField("cycle");
+		field.setAccessible(true);
+		CombatDecayCycle cycle = (CombatDecayCycle) field.get(reminder);
+		reminder.onStatChanged(new StatChanged(Skill.MAGIC, 0, 99, 112));
+		reminder.onStatChanged(new StatChanged(Skill.MAGIC, 0, 99, 111));
+		assertFalse(cycle.known());
+		when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
+		reminder.onStatChanged(new StatChanged(Skill.MAGIC, 0, 99, 110));
+		assertTrue(cycle.known());
+	}
+
+	@Test
+	public void lateSipAfterBoostExpiryDoesNotCancelOffWarning() throws Exception
+	{
+		startSipWindow();
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(99);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(118);
+		for (int tick = 0; tick <= 20; tick++)
+		{
+			when(client.getTickCount()).thenReturn(tick);
+			if (tick == 17)
+			{
+				when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(99);
+				updateVarbit(VarbitID.DIVINECOMBAT_POTION_TIME, 0);
+			}
+			if (tick == 19) { updateVarbit(VarbitID.STATRENEWAL_POTION_TIMER, 20); }
+			plugin.onGameTick(new GameTick());
+			if (tick < 17) { verify(overhead, never()).showPreserveOff(); }
+			else { verify(overhead).showPreserveOff(); }
+		}
+		verify(boxes).addInfoBox(any(PreserveInfoBox.class));
+		verify(boxes, never()).removeInfoBox(any(PreserveInfoBox.class));
+	}
+
+	private void updateVarbit(int id, int value)
+	{
+		when(client.getVarbitValue(id)).thenReturn(value);
+		VarbitChanged event = new VarbitChanged();
+		event.setVarbitId(id);
+		plugin.onVarbitChanged(event);
 	}
 
 	private void learnCycle()
