@@ -245,13 +245,13 @@ public class ReminderTest
 		when(client.getVarbitValue(Effect.SATURATED_HEART.varbit)).thenReturn(500);
 		plugin.startUp();
 		plugin.onGameTick(new GameTick()); // Heart alerts disabled, inventory unavailable.
-		verify(preserve).tick(plugin, Integer.MAX_VALUE);
+		verify(preserve).tick(plugin, Integer.MAX_VALUE, false);
 		clearInvocations(preserve);
 		plugin.shutDown();
 		when(client.getVarbitValue(Effect.SATURATED_HEART.varbit)).thenReturn(0);
 		plugin.startUp();
 		plugin.onGameTick(new GameTick());
-		verify(preserve).tick(plugin, Integer.MAX_VALUE);
+		verify(preserve).tick(plugin, Integer.MAX_VALUE, false);
 		plugin.shutDown();
 	}
 

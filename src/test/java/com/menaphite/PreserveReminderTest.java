@@ -7,6 +7,7 @@ import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.GameState;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.gameval.InventoryID;
@@ -192,17 +193,7 @@ public class PreserveReminderTest
 		doReturn(true).when(config).saturatedHeart();
 		doReturn(true).when(config).sendNotification();
 		doReturn(true).when(config).preserveNotification();
-		ItemManager items = mock(ItemManager.class);
-		when(items.getImage(anyInt())).thenReturn(new net.runelite.client.util.AsyncBufferedImage(mock(ClientThread.class), 32, 32, BufferedImage.TYPE_INT_ARGB));
-		for (Object[] entry : new Object[][]{{"client", client}, {"config", config},
-			{"clientThread", mock(ClientThread.class)}, {"notifier", notifier}, {"itemManager", items},
-			{"infoBoxManager", boxes}, {"overhead", overhead}, {"overlayManager", mock(OverlayManager.class)},
-			{"preserveReminder", reminder}})
-		{
-			Field field = MenaphiteRemedyRemindersPlugin.class.getDeclaredField((String) entry[0]);
-			field.setAccessible(true);
-			field.set(plugin, entry[1]);
-		}
+		wirePlugin();
 		ItemContainer inventory = mock(ItemContainer.class);
 		when(inventory.contains(ItemID._4DOSESTATRENEWAL)).thenReturn(true);
 		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
@@ -219,6 +210,7 @@ public class PreserveReminderTest
 			when(client.getTickCount()).thenReturn(tick);
 			when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(tick > plan.enable + 5);
 			plugin.onGameTick(new GameTick());
+			if (tick < 150) { verify(overhead, never()).showPreserveOff(); }
 		}
 		verify(notifier).notify(contains("Enable Preserve"));
 		verify(notifier).notify(contains("Sip Menaphite remedy! Saturated heart"));
@@ -226,6 +218,92 @@ public class PreserveReminderTest
 		verify(overhead).show();
 		verify(boxes).addInfoBox(any(ReminderInfoBox.class));
 		plugin.shutDown();
+	}
+
+	@Test
+	public void manuallyEnabledPreserveSurvivesOverlappingSipWindowsThenTurnsOff() throws Exception
+	{
+		startSipWindow();
+		when(client.getVarbitValue(VarbitID.DIVINERANGE_POTION_TIME)).thenReturn(22);
+		for (int tick = 0; tick <= 22; tick++)
+		{
+			when(client.getTickCount()).thenReturn(tick);
+			plugin.onGameTick(new GameTick());
+			if (tick < 22) { verify(overhead, never()).showPreserveOff(); }
+		}
+		verify(boxes, times(2)).addInfoBox(any(ReminderInfoBox.class));
+		verify(overhead).showPreserveOff(); // Both sips missed, both timed boosts expired.
+	}
+
+	@Test
+	public void delayedSipHandsProtectionOverToTheDecayingBoost() throws Exception
+	{
+		startSipWindow();
+		for (int tick = 0; tick <= 20; tick++)
+		{
+			when(client.getTickCount()).thenReturn(tick);
+			if (tick == 5)
+			{
+				when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
+				when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+				when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
+				VarbitChanged sip = new VarbitChanged();
+				sip.setVarbitId(VarbitID.STATRENEWAL_POTION_TIMER);
+				plugin.onVarbitChanged(sip);
+			}
+			plugin.onGameTick(new GameTick());
+			verify(overhead, never()).showPreserveOff();
+		}
+		verify(boxes).addInfoBox(any(ReminderInfoBox.class));
+		verify(boxes).removeInfoBox(any(ReminderInfoBox.class));
+	}
+
+	@Test
+	public void losingRemedyEndsSipWindowProtection() throws Exception
+	{
+		startSipWindow();
+		plugin.onGameTick(new GameTick());
+		verify(overhead, never()).showPreserveOff();
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(null);
+		plugin.onGameTick(new GameTick());
+		verify(overhead).showPreserveOff();
+	}
+
+	@Test
+	public void existingRenewalWithoutBoostsDoesNotCreateASipWindow() throws Exception
+	{
+		startSipWindow();
+		when(client.getVarbitValue(VarbitID.STATRENEWAL_POTION_TIMER)).thenReturn(20);
+		plugin.onGameTick(new GameTick());
+		verify(boxes, never()).addInfoBox(any(ReminderInfoBox.class));
+		verify(overhead).showPreserveOff();
+	}
+
+	private void startSipWindow() throws Exception
+	{
+		wirePlugin();
+		ItemContainer inventory = mock(ItemContainer.class);
+		when(inventory.contains(ItemID._4DOSESTATRENEWAL)).thenReturn(true);
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(17);
+		plugin.startUp();
+	}
+
+	private void wirePlugin() throws Exception
+	{
+		ItemManager items = mock(ItemManager.class);
+		when(items.getImage(anyInt())).thenReturn(new net.runelite.client.util.AsyncBufferedImage(mock(ClientThread.class), 32, 32, BufferedImage.TYPE_INT_ARGB));
+		for (Object[] entry : new Object[][]{{"client", client}, {"config", config},
+			{"clientThread", mock(ClientThread.class)}, {"notifier", notifier}, {"itemManager", items},
+			{"infoBoxManager", boxes}, {"overhead", overhead}, {"overlayManager", mock(OverlayManager.class)},
+			{"preserveReminder", reminder}})
+		{
+			Field field = MenaphiteRemedyRemindersPlugin.class.getDeclaredField((String) entry[0]);
+			field.setAccessible(true);
+			field.set(plugin, entry[1]);
+		}
 	}
 
 	@Test
@@ -254,10 +332,10 @@ public class PreserveReminderTest
 	@Test
 	public void spentSmellingSaltsUseAPlannedPreserveWindowButCarriedSaltsSuppressIt()
 	{
+		learnCycle();
 		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
 		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
 		when(client.getVarbitValue(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER)).thenReturn(10);
-		learnCycle();
 		when(client.getTickCount()).thenReturn(33);
 		reminder.onVarbitChanged(VarbitID.TOA_MIDRAIDLOOT_STATS_TIMER);
 		CombatDecayCycle cycle = new CombatDecayCycle();
@@ -279,7 +357,9 @@ public class PreserveReminderTest
 		when(inventory.contains(ItemID.TOA_SUPPLY_STATS_1)).thenReturn(true);
 		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
 		reminder.tick(plugin, Integer.MAX_VALUE);
-		verifyNoInteractions(boxes, notifier, overhead);
+		verifyNoInteractions(boxes, notifier);
+		verify(overhead, never()).showPreserve();
+		verify(overhead, never()).showPreserveOff();
 	}
 
 	@Test
@@ -324,6 +404,9 @@ public class PreserveReminderTest
 
 		clearInvocations(boxes, overhead);
 		when(client.getVarbitValue(VarbitID.DIVINECOMBAT_POTION_TIME)).thenReturn(399);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes, overhead); // Still no decaying boost; keep the OFF prompt.
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(false);
 		reminder.tick(plugin, Integer.MAX_VALUE);
 		verify(boxes).removeInfoBox(any());
 		verify(overhead).clearPreserve();

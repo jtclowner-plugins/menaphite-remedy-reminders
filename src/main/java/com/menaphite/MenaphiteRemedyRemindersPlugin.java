@@ -123,8 +123,8 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 		if (!running || client.getGameState() != GameState.LOGGED_IN) { return; }
 		if (needsSync) { synchronizeTimers(); }
 		timers.tick();
-		updateReminders(true);
-		preserveReminder.tick(this, nextReminderTarget());
+		boolean sipWindow = updateReminders(true);
+		preserveReminder.tick(this, nextReminderTarget(), sipWindow);
 	}
 
 	@Subscribe
@@ -158,19 +158,21 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 			|| inventory.contains(ItemID._4DOSESTATRENEWAL));
 	}
 
-	private void updateReminders(boolean mayNotify)
+	private boolean updateReminders(boolean mayNotify)
 	{
 		if (!config.menaphiteEnabled() || !hasRemedy())
 		{
 			clearOutputs();
-			return;
+			return false;
 		}
 		int threshold = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean anyVisibleReminder = false;
+		boolean sipWindow = false;
 		for (Effect effect : Effect.values())
 		{
 			boolean applicable = effect.enabled(config) && timers.applicable(effect)
 				&& (effect != Effect.SATURATED_HEART || canRemindForHeart());
+			sipWindow |= applicable && timers.remaining(effect) <= threshold;
 			if (mayNotify && applicable && timers.remind(effect, threshold))
 			{
 				if (config.sendNotification())
@@ -197,6 +199,7 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 			else { removeInfoBox(effect); }
 		}
 		if (!config.showOverhead() || !anyVisibleReminder) { overhead.clear(); }
+		return sipWindow && (config.sendNotification() || config.showInfobox() || config.showOverhead());
 	}
 
 	private boolean canRemindForHeart()
@@ -217,8 +220,8 @@ public class MenaphiteRemedyRemindersPlugin extends Plugin
 			{
 				if (running && client.getGameState() == GameState.LOGGED_IN)
 				{
-					updateReminders(false);
-					preserveReminder.tick(this, nextReminderTarget());
+					boolean sipWindow = updateReminders(false);
+					preserveReminder.tick(this, nextReminderTarget(), sipWindow);
 				}
 			});
 		}

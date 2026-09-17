@@ -116,13 +116,20 @@ final class PreserveReminder
 
 	void tick(Plugin plugin, int target)
 	{
+		tick(plugin, target, false);
+	}
+
+	void tick(Plugin plugin, int target, boolean menaphiteSipWindow)
+	{
 		int now = client.getTickCount();
 		boolean active = client.isPrayerActive(Prayer.PRESERVE);
 		cycle.advance(now, active);
 		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
 		int menaphiteTarget = config.promptPreserve() ? target : Integer.MAX_VALUE;
-		boolean turnOff = active && !hasNonDivineBoost() && !awaitingPlannedMenaphite(now, menaphiteTarget);
+		// Keep Preserve through the whole eligible sip window, including reaction time.
+		boolean turnOff = active && !hasNonDivineBoost() && !menaphiteSipWindow
+			&& !awaitingPlannedMenaphite(now, menaphiteTarget);
 		int saltsTarget = smellingSaltsEffectActive() && !hasSmellingSalts() ? smellingSaltsExpiry : Integer.MAX_VALUE;
 		int syncTarget = Math.min(menaphiteTarget, saltsTarget);
 		boolean preempt = syncTarget != Integer.MAX_VALUE && syncTarget > now;
