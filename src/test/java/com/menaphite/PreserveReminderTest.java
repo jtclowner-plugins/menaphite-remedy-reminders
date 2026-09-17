@@ -569,4 +569,87 @@ public class PreserveReminderTest
 		reminder.onStatChanged(new StatChanged(Skill.STRENGTH, 0, 70, 80));
 		reminder.onStatChanged(new StatChanged(Skill.STRENGTH, 0, 70, 79));
 	}
+
+	@Test
+	public void minimumOnlySuppressesOrdinaryOnAndClearsExistingPrompt()
+	{
+		assertEquals(10, config.minimumPreserveBoost());
+		doReturn(true).when(config).preserveNotification();
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(80);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserve();
+		verify(notifier).notify(contains("Enable Preserve"));
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(79);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any());
+		clearInvocations(boxes, notifier, overhead);
+		when(client.isPrayerActive(Prayer.PRESERVE)).thenReturn(true);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes, notifier);
+		verify(overhead, never()).showPreserveOff(); // +9 still benefits.
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserveOff();
+	}
+
+	@Test
+	public void zeroMinimumStillRequiresAPositiveBoost()
+	{
+		doReturn(0).when(config).minimumPreserveBoost();
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(71);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserve();
+	}
+
+	@Test
+	public void minimumUsesAnyEnabledUnprotectedSkillNotSumOfBoosts()
+	{
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(79);
+		when(client.getRealSkillLevel(Skill.WOODCUTTING)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.WOODCUTTING)).thenReturn(80);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes); // Non-combat disabled.
+		doReturn(true).when(config).preserveNonCombat();
+		when(client.getBoostedSkillLevel(Skill.WOODCUTTING)).thenReturn(79);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes); // +9 and +9 don't add up.
+		when(client.getBoostedSkillLevel(Skill.WOODCUTTING)).thenReturn(80);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserve();
+	}
+
+	@Test
+	public void highMinimumDoesNotChangePlannedMenaphiteOrSaltsTiming()
+	{
+		doReturn(100).when(config).minimumPreserveBoost();
+		mixedBoostUsesTheEarlyPlanInsteadOfAnImmediateRegularPrompt();
+		reminder.reset();
+		clearInvocations(boxes, notifier, overhead);
+		when(client.getTickCount()).thenReturn(0);
+		spentSmellingSaltsUseAPlannedPreserveWindowButCarriedSaltsSuppressIt();
+	}
+
+	@Test
+	public void protectedHighBoostDoesNotQualifyAndSettingChangesApplyImmediately()
+	{
+		when(client.getRealSkillLevel(Skill.STRENGTH)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.STRENGTH)).thenReturn(89);
+		when(client.getVarbitValue(VarbitID.DIVINESTRENGTH_POTION_TIME)).thenReturn(500);
+		when(client.getRealSkillLevel(Skill.ATTACK)).thenReturn(70);
+		when(client.getBoostedSkillLevel(Skill.ATTACK)).thenReturn(79);
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verifyNoInteractions(boxes);
+		doReturn(9).when(config).minimumPreserveBoost();
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(overhead).showPreserve();
+		doReturn(10).when(config).minimumPreserveBoost();
+		reminder.tick(plugin, Integer.MAX_VALUE);
+		verify(boxes).removeInfoBox(any());
+	}
 }

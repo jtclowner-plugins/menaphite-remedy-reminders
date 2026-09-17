@@ -7,4 +7,5 @@ You are prompted to sip a Menaphite remedy shortly before a timed boost expires,
 * Handles overlapping boosts independently, and accounts for existing regularly decaying boosts when optimising Preserve.
 * Re-potting refreshes the tracked timer and moves the reminders to the new expiry.
 * Configurable reminder timing, with notifications, countdown infoboxes, and overhead text.
+* Ordinary Preserve-on reminders require a boost of at least +10 by default. Change "Minimum boost for Preserve-on" under Preserve reminders, or set it to 0 for any positive boost. Preserve-off warnings and planned Menaphite/salts timing are unaffected.
 * Per-potion toggles. Saturated heart is also supported and can be limited to when the heart is no longer in your inventory (e.g. wilderness use cases).

@@ -111,6 +111,12 @@ public interface MenaphiteRemedyRemindersConfig extends Config
 	@ConfigItem(keyName = "preserveColour", name = "Overhead colour", description = "Colour of the Preserve overhead reminder", section = PRESERVE, position = 5)
 	default Color preserveColour() { return new Color(180, 100, 255); }
 
+	@Range(min = 0, max = 100)
+	@ConfigItem(keyName = "minimumPreserveBoost", name = "Minimum boost for Preserve-on",
+		description = "Minimum levels above base in any enabled skill for ordinary Preserve-on reminders. Default: 10. 0 means no minimum. Does not affect Preserve-off or planned Menaphite/salts timing.",
+		section = PRESERVE, position = 6)
+	default int minimumPreserveBoost() { return 10; }
+
 	@ConfigItem(keyName = "preserveCombat", name = "Prompt to preserve combat stats", description = "Prompt when a regularly-decaying combat boost is detected", section = PRESERVE, position = 7)
 	default boolean preserveCombat() { return true; }
 

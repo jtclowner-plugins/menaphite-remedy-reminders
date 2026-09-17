@@ -179,7 +179,15 @@ final class PreserveReminder
 				return;
 			}
 		}
-		else { plan = null; }
+		else
+		{
+			plan = null;
+			if (!hasRegularBoost(Math.max(1, config.minimumPreserveBoost())))
+			{
+				clearOutputs();
+				return;
+			}
+		}
 		if (plan != null && plan.target == menaphiteTarget) { plannedMenaphiteTarget = plan.target; }
 		showPrompt(plugin, now, false);
 	}
@@ -236,13 +244,18 @@ final class PreserveReminder
 
 	private boolean hasRegularBoost()
 	{
+		return hasRegularBoost(1);
+	}
+
+	private boolean hasRegularBoost(int minimum)
+	{
 		for (Skill skill : Skill.values())
 		{
 			if (skill == Skill.OVERALL || skill == Skill.HITPOINTS || skill == Skill.PRAYER) { continue; }
 			boolean combat = skill == Skill.ATTACK || skill == Skill.STRENGTH || skill == Skill.DEFENCE
 				|| skill == Skill.RANGED || skill == Skill.MAGIC;
 			if ((combat ? config.preserveCombat() : config.preserveNonCombat())
-				&& client.getBoostedSkillLevel(skill) > client.getRealSkillLevel(skill)
+				&& client.getBoostedSkillLevel(skill) - client.getRealSkillLevel(skill) >= minimum
 				&& (!combat || !divineProtected(skill))) { return true; }
 		}
 		return false;
