@@ -134,7 +134,6 @@ final class PreserveReminder
 		int now = client.getTickCount();
 		boolean active = client.isPrayerActive(Prayer.PRESERVE);
 		cycle.advance(now, active);
-		int lead = ReminderTimers.reminderTicks(config.remindSeconds());
 		boolean regular = hasRegularBoost();
 		int menaphiteTarget = config.promptPreserve() ? target : Integer.MAX_VALUE;
 		// Keep Preserve through the whole eligible sip window, including reaction time.
@@ -166,7 +165,7 @@ final class PreserveReminder
 		if (preempt)
 		{
 			// A regular boost permits early activation, but never bypass the sip timing.
-			if (!cycle.known() || (!regular && (long) syncTarget - now + lead > 150))
+			if (!cycle.known() || (!regular && (long) syncTarget - now > 150))
 			{
 				cancel();
 				return;

@@ -57,12 +57,12 @@ public class PreserveReminderTest
 	}
 
 	@Test
-	public void waitsUntilFinalNinetySecondsThenShowsOneEnablePrompt()
+	public void waitsUntilFinalNinetySecondsBeforeSipTargetThenShowsOneEnablePrompt()
 	{
 		reminder.tick(plugin, 133); // Unknown cycle.
 		verifyNoInteractions(boxes);
 		learnCycle();
-		reminder.tick(plugin, 134); // Still more than 90 seconds to expiry.
+		reminder.tick(plugin, 151); // Still more than 90 seconds to the sip-window start.
 		verifyNoInteractions(boxes);
 		CombatDecayCycle cycle = new CombatDecayCycle();
 		cycle.observe(0);
@@ -562,6 +562,88 @@ public class PreserveReminderTest
 		VarbitChanged event = new VarbitChanged();
 		event.setVarbitId(id);
 		plugin.onVarbitChanged(event);
+	}
+
+	@Test
+	public void exhaustiveSipWindowsUseTheFullPlanningHorizon() throws Exception
+	{
+		assertEquals(10, config.remindSeconds());
+		for (int seconds : new int[]{6, 8, 10})
+		{
+			int lead = ReminderTimers.reminderTicks(seconds);
+			long[] results = sipWindowOutcomes(seconds, 150, true);
+			assertEquals(100L * 18 * lead, results[3]);
+			assertEquals(600 - lead, results[0]);
+			assertEquals(624.5 - lead, (double) results[2] / results[3], 0.0);
+			assertEquals(649 - lead, results[1]);
+		}
+		// Emulate the old gate by withholding planning until target - (150 - lead).
+		long[] old = sipWindowOutcomes(10, 150 - ReminderTimers.reminderTicks(10), false);
+		assertEquals(533, old[0]);
+	}
+
+	private long[] sipWindowOutcomes(int seconds, int horizon, boolean invariant) throws Exception
+	{
+		int expiry = 500;
+		int lead = ReminderTimers.reminderTicks(seconds);
+		int target = expiry - lead;
+		long min = Long.MAX_VALUE, max = Long.MIN_VALUE, sum = 0, count = 0;
+		Field field = PreserveReminder.class.getDeclaredField("cycle");
+		field.setAccessible(true);
+		doReturn(seconds).when(config).remindSeconds();
+		int[] now = {0};
+		int[] promptedAt = {-1};
+		when(client.getTickCount()).thenAnswer(ignored -> now[0]);
+		doAnswer(ignored -> { promptedAt[0] = now[0]; return null; }).when(overhead).showPreserve();
+		for (int phase = 0; phase < 100; phase++)
+		{
+			// Keep mock invocation history bounded across this exhaustive simulation.
+			clearInvocations(client, config, overhead, boxes, notifier, settings);
+			reminder.reset();
+			promptedAt[0] = -1;
+			CombatDecayCycle tracked = (CombatDecayCycle) field.get(reminder);
+			tracked.observe(0);
+			tracked.age = phase; // Phase at the start of the five-minute protected boost.
+			for (now[0] = target - horizon; now[0] < target && promptedAt[0] < 0; now[0]++)
+			{
+				reminder.tick(plugin, target);
+			}
+			assertTrue("No activation prompt for phase " + phase, promptedAt[0] >= 0);
+			for (int reaction = 0; reaction <= 17; reaction++)
+			{
+				int activation = promptedAt[0] + reaction;
+				int firstEndpoint = -1;
+				for (int sip = target; sip < expiry; sip++)
+				{
+					CombatDecayCycle simulation = new CombatDecayCycle();
+					simulation.observe(0);
+					simulation.age = phase;
+					int endpoint = -1;
+					for (int tick = 1; tick <= expiry + 150; tick++)
+					{
+						// Activation at tick A affects intervals after A, matching PreservePlan.
+						boolean decay = simulation.step(tick > activation);
+						// Earlier decays still reset the cycle, but the boost protects the stat.
+						if (decay && tick >= sip) { endpoint = tick; break; }
+					}
+					assertTrue("Missing decay", endpoint >= sip);
+					if (firstEndpoint < 0) { firstEndpoint = endpoint; }
+					if (invariant)
+					{
+						assertTrue("Decay inside the permitted sip window", endpoint >= expiry);
+						assertEquals("Sip timing changed endpoint for phase " + phase
+							+ ", reaction " + reaction + ", sip " + sip, firstEndpoint, endpoint);
+					}
+					min = Math.min(min, endpoint);
+					max = Math.max(max, endpoint);
+					sum += endpoint;
+					count++;
+				}
+			}
+		}
+		System.out.println("Sip window " + seconds + "s; horizon=" + horizon + "; outcomes=" + count
+			+ "; min/mean/max=" + min + "/" + (double) sum / count + "/" + max);
+		return new long[]{min, max, sum, count};
 	}
 
 	private void learnCycle()
